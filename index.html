@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TRwebapp</title>
+    <meta name="description" content="サッカートレーニング用Webアプリのポータル" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Figtree:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="pitch" aria-hidden="true"></div>
+    <main class="shell">
+      <header class="brand-block">
+        <p class="mark">rojiura / training</p>
+        <h1 class="brand">TRwebapp</h1>
+        <p class="lede">グラウンドで使う、同期トレーニングアプリ集。</p>
+      </header>
+
+      <nav class="apps" aria-label="アプリ一覧">
+        <a class="app app-scan" href="https://fieldscan.rojiura.app">
+          <span class="app-kicker">FieldScan</span>
+          <span class="app-name">首振りスキャン</span>
+          <span class="app-desc">周囲のフリーを見つける。青／半分／朱を複数端末で同期。</span>
+          <span class="app-cta">開く</span>
+        </a>
+        <a class="app app-goal" href="https://randomgoal.rojiura.app">
+          <span class="app-kicker">Random Goal</span>
+          <span class="app-name">ランダムゴール</span>
+          <span class="app-desc">チーム色のゴールが切り替わる。狙う／守るを同時に。</span>
+          <span class="app-cta">開く</span>
+        </a>
+      </nav>
+    </main>
+  </body>
+</html>

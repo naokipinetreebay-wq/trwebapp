@@ -1,0 +1,209 @@
+:root {
+  --turf: #0b3d2e;
+  --turf-deep: #06261c;
+  --line: rgba(232, 241, 234, 0.18);
+  --foam: #e8f1ea;
+  --mist: rgba(232, 241, 234, 0.72);
+  --scan: #3ecf8e;
+  --goal: #f0c419;
+  --ink-dark: #04160f;
+  --font-display: "Archivo Black", "Hiragino Sans", sans-serif;
+  --font-body: "Figtree", "Hiragino Sans", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--foam);
+  background: var(--turf-deep);
+  overflow-x: hidden;
+}
+
+.pitch {
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(4, 22, 15, 0.35), rgba(4, 22, 15, 0.75)),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 48px,
+      rgba(255, 255, 255, 0.03) 48px,
+      rgba(255, 255, 255, 0.03) 50px
+    ),
+    radial-gradient(ellipse 90% 60% at 50% -10%, #1a6b4f 0%, transparent 55%),
+    linear-gradient(160deg, #0f5a42 0%, var(--turf) 40%, var(--turf-deep) 100%);
+  z-index: 0;
+}
+
+.pitch::after {
+  content: "";
+  position: absolute;
+  inset: 8% 6%;
+  border: 2px solid var(--line);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: clamp(2rem, 5vw, 3.5rem);
+  padding: clamp(1.5rem, 4vw, 3rem);
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.brand-block {
+  animation: rise 0.7s ease both;
+}
+
+.mark {
+  margin: 0 0 0.6rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--mist);
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(3.2rem, 12vw, 6.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 1rem 0 0;
+  max-width: 28rem;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: var(--mist);
+  animation: rise 0.7s ease 0.08s both;
+}
+
+.apps {
+  display: grid;
+  gap: 1rem;
+  animation: rise 0.7s ease 0.16s both;
+}
+
+@media (min-width: 760px) {
+  .apps {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+}
+
+.app {
+  position: relative;
+  display: grid;
+  gap: 0.55rem;
+  padding: 1.4rem 1.35rem 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--line);
+  background: rgba(4, 22, 15, 0.45);
+  backdrop-filter: blur(8px);
+  transition:
+    transform 0.25s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
+  overflow: hidden;
+}
+
+.app::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+}
+
+.app-scan::before {
+  background: var(--scan);
+}
+
+.app-goal::before {
+  background: var(--goal);
+}
+
+.app:hover,
+.app:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(232, 241, 234, 0.4);
+  background: rgba(4, 22, 15, 0.7);
+  outline: none;
+}
+
+.app-kicker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.app-name {
+  font-family: var(--font-display);
+  font-size: clamp(1.55rem, 4vw, 2rem);
+  letter-spacing: -0.02em;
+}
+
+.app-desc {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--mist);
+  max-width: 28ch;
+}
+
+.app-cta {
+  margin-top: 0.6rem;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.app-scan .app-cta {
+  color: var(--scan);
+}
+
+.app-goal .app-cta {
+  color: var(--goal);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-block,
+  .lede,
+  .apps,
+  .app {
+    animation: none;
+    transition: none;
+  }
+}
