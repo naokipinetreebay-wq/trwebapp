@@ -6,6 +6,7 @@
   --mist: rgba(232, 241, 234, 0.72);
   --scan: #3ecf8e;
   --goal: #f0c419;
+  --tap: #4cc3ff;
   --ink-dark: #04160f;
   --font-display: "Archivo Black", "Hiragino Sans", sans-serif;
   --font-body: "Figtree", "Hiragino Sans", sans-serif;
@@ -105,7 +106,7 @@ body {
 
 @media (min-width: 760px) {
   .apps {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 1.25rem;
   }
 }
@@ -142,6 +143,10 @@ body {
 
 .app-goal::before {
   background: var(--goal);
+}
+
+.app-tap::before {
+  background: var(--tap);
 }
 
 .app:hover,
@@ -185,6 +190,10 @@ body {
 
 .app-goal .app-cta {
   color: var(--goal);
+}
+
+.app-tap .app-cta {
+  color: var(--tap);
 }
 
 @keyframes rise {
