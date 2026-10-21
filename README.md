@@ -7,12 +7,14 @@
 |--------|-----|
 | 首振り | https://fieldscan.rojiura.app |
 | ゴール | https://randomgoal.rojiura.app |
+| 順番タップ | https://numbertap.rojiura.app |
 
 ## DNS（Cloudflare）
 
 | タイプ | 名前 | ターゲット | プロキシ |
 |--------|------|------------|----------|
 | CNAME | `tr` | `trwebapp.pages.dev` | オレンジ雲（Proxied）でOK |
+| CNAME | `numbertap` | Worker `numbertap-proxy` が自動作成 | オレンジ雲。中身は `numbertap-tr.onrender.com` |
 
 Pages プロジェクト側にも `tr.rojiura.app` カスタムドメインを追加済み。DNS の CNAME があれば有効化されます。
 
