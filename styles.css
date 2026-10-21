@@ -7,6 +7,7 @@
   --scan: #3ecf8e;
   --goal: #f0c419;
   --tap: #4cc3ff;
+  --shuttle: #ff7a3c;
   --ink-dark: #04160f;
   --font-display: "Archivo Black", "Hiragino Sans", sans-serif;
   --font-body: "Figtree", "Hiragino Sans", sans-serif;
@@ -149,6 +150,10 @@ body {
   background: var(--tap);
 }
 
+.app-shuttle::before {
+  background: var(--shuttle);
+}
+
 .app:hover,
 .app:focus-visible {
   transform: translateY(-3px);
@@ -194,6 +199,10 @@ body {
 
 .app-tap .app-cta {
   color: var(--tap);
+}
+
+.app-shuttle .app-cta {
+  color: var(--shuttle);
 }
 
 @keyframes rise {
