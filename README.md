@@ -1,5 +1,7 @@
 # TRwebapp ポータル
 
+構成、技術要素、各アプリの仕様は [PLATFORM.md](./PLATFORM.md)。
+
 - Cloudflare Pages: https://trwebapp.pages.dev  
 - 本番: https://tr.rojiura.app （DNS 設定後）
 
