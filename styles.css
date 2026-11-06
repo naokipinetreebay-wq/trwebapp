@@ -8,6 +8,12 @@
   --goal: #f0c419;
   --tap: #4cc3ff;
   --shuttle: #ff7a3c;
+  --peri: #c084fc;
+  --saccade: #38bdf8;
+  --flash: #fb7185;
+  --keep: #34d399;
+  --escape: #f97316;
+  --drive: #818cf8;
   --ink-dark: #04160f;
   --font-display: "Archivo Black", "Hiragino Sans", sans-serif;
   --font-body: "Figtree", "Hiragino Sans", sans-serif;
@@ -154,6 +160,30 @@ body {
   background: var(--shuttle);
 }
 
+.app-peri::before {
+  background: var(--peri);
+}
+
+.app-saccade::before {
+  background: var(--saccade);
+}
+
+.app-flash::before {
+  background: var(--flash);
+}
+
+.app-keep::before {
+  background: var(--keep);
+}
+
+.app-escape::before {
+  background: var(--escape);
+}
+
+.app-drive::before {
+  background: var(--drive);
+}
+
 .app:hover,
 .app:focus-visible {
   transform: translateY(-3px);
@@ -203,6 +233,30 @@ body {
 
 .app-shuttle .app-cta {
   color: var(--shuttle);
+}
+
+.app-peri .app-cta {
+  color: var(--peri);
+}
+
+.app-saccade .app-cta {
+  color: var(--saccade);
+}
+
+.app-flash .app-cta {
+  color: var(--flash);
+}
+
+.app-keep .app-cta {
+  color: var(--keep);
+}
+
+.app-escape .app-cta {
+  color: var(--escape);
+}
+
+.app-drive .app-cta {
+  color: var(--drive);
 }
 
 @keyframes rise {
