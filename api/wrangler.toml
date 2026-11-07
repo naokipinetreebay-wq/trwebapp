@@ -25,6 +25,14 @@ bucket_name = "tr-ads"
 name = "KEEP_ROOM"
 class_name = "KeepRoom"
 
+[[durable_objects.bindings]]
+name = "DRIVE_ROOM"
+class_name = "DriveRoom"
+
 [[migrations]]
 tag = "v1-keep-room"
 new_sqlite_classes = ["KeepRoom"]
+
+[[migrations]]
+tag = "v2-drive-room"
+new_sqlite_classes = ["DriveRoom"]

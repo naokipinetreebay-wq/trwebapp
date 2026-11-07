@@ -1,17 +1,22 @@
 /**
- * Keep（ドリブルキープ）用ルーム Durable Object。
+ * Keep / Escape 用ルーム Durable Object（lone 信号アプリ共通）。
  * Hibernation WebSocket + alarm でフレーム進行。状態は storage に保存。
  */
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CONTROLLER_ID = "controller";
-const LONE_SIGNAL = "red";
 const MIN_TOTAL = 2;
 const MAX_PERIPHERALS = 7;
 const MIN_INTERVAL = 1;
 const MAX_INTERVAL = 5;
 const MIN_DURATION = 10;
 const MAX_DURATION = 60;
+
+/** keep=赤が敵 / escape=緑が空き */
+const LONE_BY_APP = {
+  dribblekeep: "red",
+  escape: "green",
+};
 
 const DEFAULT_CONFIG = {
   intervalSeconds: 2,
@@ -35,11 +40,13 @@ function pickLone(ids, previous, rng) {
   return choices[Math.max(0, index)];
 }
 
-function emptyState(code) {
+function emptyState(code, app = "dribblekeep") {
+  const loneSignal = LONE_BY_APP[app] || "red";
   return {
     code,
-    app: "dribblekeep",
-    config: { ...DEFAULT_CONFIG },
+    app,
+    loneSignal,
+    config: { ...DEFAULT_CONFIG, sound: app === "dribblekeep" },
     displays: {},
     controllerSignal: null,
     loneId: null,
@@ -77,12 +84,16 @@ export class KeepRoom {
     if (request.method === "POST" && url.pathname === "/init") {
       const body = await request.json().catch(() => ({}));
       const code = String(body.code || "").toUpperCase();
+      const app = String(body.app || "dribblekeep");
       if (!code) return Response.json({ error: "code_required" }, { status: 400 });
+      if (!LONE_BY_APP[app]) {
+        return Response.json({ error: "unsupported_app" }, { status: 400 });
+      }
       if (!this.data.code) {
-        this.data = emptyState(code);
+        this.data = emptyState(code, app);
         await this.persist();
       }
-      return Response.json({ ok: true, code: this.data.code });
+      return Response.json({ ok: true, code: this.data.code, app: this.data.app });
     }
 
     if (request.method === "GET" && url.pathname === "/exists") {
@@ -292,7 +303,8 @@ export class KeepRoom {
 
   buildPlayPackage(ids, startAt, endsAt) {
     const intervalMs = this.data.config.intervalSeconds * 1000;
-    const rest = otherSignal(LONE_SIGNAL);
+    const loneSignal = this.data.loneSignal || "red";
+    const rest = otherSignal(loneSignal);
     const frames = [];
     let at = startAt;
     let prevLone = null;
@@ -300,7 +312,7 @@ export class KeepRoom {
       const lone = pickLone(ids, prevLone, Math.random);
       prevLone = lone;
       const signals = {};
-      for (const id of ids) signals[id] = id === lone ? LONE_SIGNAL : rest;
+      for (const id of ids) signals[id] = id === lone ? loneSignal : rest;
       frames.push({ frameStartedAt: at, loneId: lone, signals });
       const frameEnd = at + intervalMs;
       if (frameEnd >= endsAt) break;
@@ -392,3 +404,5 @@ export function randomRoomCode(length = 6) {
   }
   return out;
 }
+
+export const LONE_APPS = Object.keys(LONE_BY_APP);

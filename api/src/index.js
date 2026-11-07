@@ -1,12 +1,13 @@
 /**
  * TRwebapp API（Cloudflare Worker）
- * - 部屋作成時 bootstrap / stats
- * - Keep ルーム Durable Object（本番 CF 移行の第一弾）
+ * - bootstrap / stats
+ * - ルーム Durable Objects（Keep / Escape / Drive）
  */
 
-import { KeepRoom, randomRoomCode } from "./keepRoom.js";
+import { DriveRoom } from "./driveRoom.js";
+import { KeepRoom, LONE_APPS, randomRoomCode } from "./keepRoom.js";
 
-export { KeepRoom };
+export { KeepRoom, DriveRoom };
 
 const HOUR_MS = 60 * 60 * 1000;
 const CORS = {
@@ -14,6 +15,8 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+
+const ROOM_APPS = new Set([...LONE_APPS, "drive"]);
 
 export default {
   async fetch(request, env) {
@@ -24,7 +27,12 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/health" && request.method === "GET") {
-        return json({ ok: true, service: "tr-api", now: Date.now(), rooms: ["dribblekeep"] });
+        return json({
+          ok: true,
+          service: "tr-api",
+          now: Date.now(),
+          rooms: [...ROOM_APPS],
+        });
       }
       if (url.pathname === "/v1/bootstrap" && request.method === "POST") {
         return handleBootstrap(request, env);
@@ -48,16 +56,30 @@ export default {
   },
 };
 
+function roomStub(env, app, code) {
+  if (app === "drive") {
+    const id = env.DRIVE_ROOM.idFromName(`${app}:${code}`);
+    return env.DRIVE_ROOM.get(id);
+  }
+  if (LONE_APPS.includes(app)) {
+    const id = env.KEEP_ROOM.idFromName(`${app}:${code}`);
+    return env.KEEP_ROOM.get(id);
+  }
+  return null;
+}
+
 async function handleCreateRoom(request, env) {
   const body = await readJson(request);
   const app = String(body.app || "").slice(0, 64);
-  if (app !== "dribblekeep") {
-    return json({ error: "unsupported_app", message: "CFルームはまず dribblekeep のみ" }, 400);
+  if (!ROOM_APPS.has(app)) {
+    return json(
+      { error: "unsupported_app", message: `対応アプリ: ${[...ROOM_APPS].join(", ")}` },
+      400
+    );
   }
   let code = randomRoomCode();
   for (let i = 0; i < 8; i++) {
-    const id = env.KEEP_ROOM.idFromName(`${app}:${code}`);
-    const stub = env.KEEP_ROOM.get(id);
+    const stub = roomStub(env, app, code);
     const exists = await stub.fetch("https://room/exists");
     const data = await exists.json();
     if (!data.exists) {
@@ -81,10 +103,8 @@ async function handleCreateRoom(request, env) {
 async function handleRoomExists(url, env) {
   const code = url.pathname.split("/").pop()?.toUpperCase() || "";
   const app = url.searchParams.get("app") || "dribblekeep";
-  if (!code) return json({ exists: false });
-  if (app !== "dribblekeep") return json({ exists: false });
-  const id = env.KEEP_ROOM.idFromName(`${app}:${code}`);
-  const stub = env.KEEP_ROOM.get(id);
+  if (!code || !ROOM_APPS.has(app)) return json({ exists: false });
+  const stub = roomStub(env, app, code);
   const res = await stub.fetch("https://room/exists");
   const data = await res.json();
   return json({ exists: Boolean(data.exists && data.code === code), code });
@@ -96,11 +116,10 @@ async function handleWs(request, env, url) {
   }
   const app = url.searchParams.get("app") || "dribblekeep";
   const room = (url.searchParams.get("room") || "").toUpperCase();
-  if (app !== "dribblekeep" || !room) {
+  if (!ROOM_APPS.has(app) || !room) {
     return new Response("bad room", { status: 400 });
   }
-  const id = env.KEEP_ROOM.idFromName(`${app}:${room}`);
-  const stub = env.KEEP_ROOM.get(id);
+  const stub = roomStub(env, app, room);
   return stub.fetch(request);
 }
 
@@ -189,7 +208,7 @@ async function recordEvent(env, event) {
       JSON.stringify(event)
     ).run();
   } catch {
-    // 初期は失敗しても bootstrap は通す
+    /* ignore */
   }
 }
 
