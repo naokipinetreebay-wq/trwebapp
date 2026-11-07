@@ -27,23 +27,25 @@ const ROOM_CODE_TS = `"use client";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export function useRoomCode(): string {
-  const params = useParams<{ code: string }>();
-  const [code, setCode] = useState(() => {
-    const raw = String(params.code || "");
-    return raw && raw !== "_" ? raw.toUpperCase() : "";
-  });
-
-  useEffect(() => {
+function readCodeFromLocation(paramsCode: string | undefined): string {
+  if (typeof window !== "undefined") {
     const parts = window.location.pathname.split("/").filter(Boolean);
     const marker = parts.findIndex((p) => p === "r" || p === "d");
     const fromPath = marker >= 0 ? parts[marker + 1] || "" : "";
-    if (fromPath && fromPath !== "_") {
-      setCode(fromPath.toUpperCase());
-      return;
-    }
-    const raw = String(params.code || "");
-    if (raw && raw !== "_") setCode(raw.toUpperCase());
+    if (fromPath && fromPath !== "_") return fromPath.toUpperCase();
+    const fromQuery = new URLSearchParams(window.location.search).get("code") || "";
+    if (fromQuery) return fromQuery.toUpperCase();
+  }
+  const raw = String(paramsCode || "");
+  return raw && raw !== "_" ? raw.toUpperCase() : "";
+}
+
+export function useRoomCode(): string {
+  const params = useParams<{ code: string }>();
+  const [code, setCode] = useState(() => readCodeFromLocation(params.code));
+
+  useEffect(() => {
+    setCode(readCodeFromLocation(params.code));
   }, [params.code]);
 
   return code;
