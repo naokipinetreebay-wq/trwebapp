@@ -74,7 +74,7 @@ cd api && npx wrangler deploy
 cd ../dribblekeepTR/proxy && npx wrangler deploy   # 他アプリの proxy/ も同様
 ```
 
-Render 上の旧サービスは本番では使わない。ダッシュボードから停止・削除してよい（FieldScan / Random Goal の redirect 用だけ、DNS 付け替えまでは残す）。
+Render 上の旧サービスのうち、CF proxy で足りる 8 本（Keep / Escape / Drive / PeriTap / Saccade / FlashMem / NumberTap / Shuttle Touch）は suspend 済み。FieldScan / Random Goal だけ redirect 用に残している（DNS を Worker カスタムドメインへ付け替えればこれも不要）。
 
 ## Cloudflare 小さい器
 
