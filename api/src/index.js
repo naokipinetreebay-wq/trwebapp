@@ -74,6 +74,9 @@ export default {
           rooms: [...ROOM_APPS],
         });
       }
+      if (url.pathname.startsWith("/ads/") && (request.method === "GET" || request.method === "HEAD")) {
+        return handleAds(request, env, url);
+      }
       if (url.pathname === "/v1/bootstrap" && request.method === "POST") {
         return handleBootstrap(request, env);
       }
@@ -204,26 +207,62 @@ async function handleStats(request, env) {
   return json({ ok: true, serverNow: now });
 }
 
+const GAMECHOP_CREATIVE = {
+  id: "gamechop-self-promo",
+  kind: "video",
+  title: "GameChop",
+  url: "https://gamechop.rojiura.app/",
+  mediaUrl: "https://tr-api.rojiura.app/ads/gamechop/self-promo-30s.mp4",
+  mediaType: "video/mp4",
+  durationSeconds: 30,
+  skippable: true,
+};
+
 function decideAd({ now, lastAdAt, skipDebt }) {
   const due = lastAdAt == null || now - lastAdAt >= HOUR_MS;
   if (!due) {
     return { show: false, reason: "within_hour", count: 0, creatives: [] };
   }
   const count = skipDebt >= 5 ? 2 : 1;
-  const creative = {
-    id: "gamechop-self-promo",
-    kind: "self",
-    title: "GameChop",
-    url: "https://gamechop.rojiura.app/",
-    durationSeconds: 30,
-    skippable: true,
-  };
   return {
     show: true,
     reason: skipDebt >= 5 ? "skip_debt_repay" : "hourly",
     count,
-    creatives: Array.from({ length: count }, () => creative),
+    creatives: Array.from({ length: count }, () => ({ ...GAMECHOP_CREATIVE })),
   };
+}
+
+async function handleAds(request, env, url) {
+  const key = decodeURIComponent(url.pathname.slice("/ads/".length));
+  if (!key || key.includes("..") || key.startsWith("/") || key.includes("\\")) {
+    return json({ error: "bad_key" }, 400);
+  }
+  if (!env.ADS) {
+    return json({ error: "ads_unavailable" }, 503);
+  }
+
+  const object = await env.ADS.get(key, { range: request.headers });
+  if (!object) {
+    return new Response("Not found", { status: 404, headers: CORS });
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Cache-Control", "public, max-age=86400");
+  if (!headers.get("Content-Type")) {
+    if (key.endsWith(".mp4")) headers.set("Content-Type", "video/mp4");
+    else if (key.endsWith(".webm")) headers.set("Content-Type", "video/webm");
+    else headers.set("Content-Type", "application/octet-stream");
+  }
+
+  const status = object.range != null ? 206 : 200;
+  if (request.method === "HEAD") {
+    return new Response(null, { status, headers });
+  }
+  return new Response(object.body, { status, headers });
 }
 
 async function recordEvent(env, event) {
