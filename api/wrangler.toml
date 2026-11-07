@@ -20,3 +20,11 @@ bucket_name = "tr-packages"
 [[r2_buckets]]
 binding = "ADS"
 bucket_name = "tr-ads"
+
+[[durable_objects.bindings]]
+name = "KEEP_ROOM"
+class_name = "KeepRoom"
+
+[[migrations]]
+tag = "v1-keep-room"
+new_sqlite_classes = ["KeepRoom"]

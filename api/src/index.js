@@ -1,11 +1,12 @@
 /**
- * TRwebapp ブートストラップ API（Cloudflare Worker）
- * 部屋作成時だけオンラインで叩く。プレー中は使わない。
- *
- * POST /v1/bootstrap  … 属性つき統計の受付 + 広告判定 + サーバ時刻
- * POST /v1/stats      … 統計イベントのみ
- * GET  /health
+ * TRwebapp API（Cloudflare Worker）
+ * - 部屋作成時 bootstrap / stats
+ * - Keep ルーム Durable Object（本番 CF 移行の第一弾）
  */
+
+import { KeepRoom, randomRoomCode } from "./keepRoom.js";
+
+export { KeepRoom };
 
 const HOUR_MS = 60 * 60 * 1000;
 const CORS = {
@@ -23,7 +24,7 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/health" && request.method === "GET") {
-        return json({ ok: true, service: "tr-api", now: Date.now() });
+        return json({ ok: true, service: "tr-api", now: Date.now(), rooms: ["dribblekeep"] });
       }
       if (url.pathname === "/v1/bootstrap" && request.method === "POST") {
         return handleBootstrap(request, env);
@@ -31,12 +32,81 @@ export default {
       if (url.pathname === "/v1/stats" && request.method === "POST") {
         return handleStats(request, env);
       }
+      if (url.pathname === "/v1/rooms" && request.method === "POST") {
+        return handleCreateRoom(request, env);
+      }
+      if (url.pathname.startsWith("/v1/rooms/") && request.method === "GET") {
+        return handleRoomExists(url, env);
+      }
+      if (url.pathname === "/ws") {
+        return handleWs(request, env, url);
+      }
       return json({ error: "not_found" }, 404);
     } catch (error) {
       return json({ error: "server_error", message: String(error?.message || error) }, 500);
     }
   },
 };
+
+async function handleCreateRoom(request, env) {
+  const body = await readJson(request);
+  const app = String(body.app || "").slice(0, 64);
+  if (app !== "dribblekeep") {
+    return json({ error: "unsupported_app", message: "CFルームはまず dribblekeep のみ" }, 400);
+  }
+  let code = randomRoomCode();
+  for (let i = 0; i < 8; i++) {
+    const id = env.KEEP_ROOM.idFromName(`${app}:${code}`);
+    const stub = env.KEEP_ROOM.get(id);
+    const exists = await stub.fetch("https://room/exists");
+    const data = await exists.json();
+    if (!data.exists) {
+      await stub.fetch("https://room/init", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code, app }),
+      });
+      return json({
+        code,
+        app,
+        host: urlHost(request),
+        wsPath: "/ws",
+      });
+    }
+    code = randomRoomCode();
+  }
+  return json({ error: "room_create_failed" }, 503);
+}
+
+async function handleRoomExists(url, env) {
+  const code = url.pathname.split("/").pop()?.toUpperCase() || "";
+  const app = url.searchParams.get("app") || "dribblekeep";
+  if (!code) return json({ exists: false });
+  if (app !== "dribblekeep") return json({ exists: false });
+  const id = env.KEEP_ROOM.idFromName(`${app}:${code}`);
+  const stub = env.KEEP_ROOM.get(id);
+  const res = await stub.fetch("https://room/exists");
+  const data = await res.json();
+  return json({ exists: Boolean(data.exists && data.code === code), code });
+}
+
+async function handleWs(request, env, url) {
+  if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+    return json({ error: "expected_websocket" }, 426);
+  }
+  const app = url.searchParams.get("app") || "dribblekeep";
+  const room = (url.searchParams.get("room") || "").toUpperCase();
+  if (app !== "dribblekeep" || !room) {
+    return new Response("bad room", { status: 400 });
+  }
+  const id = env.KEEP_ROOM.idFromName(`${app}:${room}`);
+  const stub = env.KEEP_ROOM.get(id);
+  return stub.fetch(request);
+}
+
+function urlHost(request) {
+  return new URL(request.url).host;
+}
 
 async function handleBootstrap(request, env) {
   const body = await readJson(request);
@@ -60,7 +130,6 @@ async function handleBootstrap(request, env) {
     serverNow: now,
     profileAccepted: Boolean(profile),
     ad,
-    // 実行パッケージは後で R2 に置く。今は版だけ返す。
     package: {
       version: "0.0.0",
       note: "local runtime packages not uploaded yet",
@@ -82,7 +151,6 @@ async function handleStats(request, env) {
 }
 
 function decideAd({ now, lastAdAt, skipDebt }) {
-  // 初期: 自社 GameChop 宣伝。1時間に1回。スキップ負債はクライアントが保持し、返済本数だけ返す。
   const due = lastAdAt == null || now - lastAdAt >= HOUR_MS;
   if (!due) {
     return { show: false, reason: "within_hour", count: 0, creatives: [] };
@@ -92,7 +160,6 @@ function decideAd({ now, lastAdAt, skipDebt }) {
     id: "gamechop-self-promo",
     kind: "self",
     title: "GameChop",
-    // 実ファイルは後で tr-ads に置く。当面はサイト誘導でも可。
     url: "https://gamechop.rojiura.app/",
     durationSeconds: 30,
     skippable: true,

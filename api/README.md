@@ -1,40 +1,37 @@
-# tr-api（TRwebapp ブートストラップ）
+# tr-api（TRwebapp）
 
-部屋作成時だけ叩く Cloudflare Worker。プレー中は使わない。
+Cloudflare Worker。広告ブートストラップと、CF移行第一弾のルーム（Keep）を担う。
+
+本番: https://tr-api.rojiura.app
 
 ## エンドポイント
 
 | 方法 | パス | 内容 |
 |------|------|------|
 | GET | `/health` | 生存確認 |
-| POST | `/v1/bootstrap` | 属性・端末情報の受付、広告判定、サーバ時刻 |
-| POST | `/v1/stats` | 統計イベントのみ |
+| POST | `/v1/bootstrap` | 属性・広告判定・サーバ時刻 |
+| POST | `/v1/stats` | 統計イベント |
+| POST | `/v1/rooms` | ルーム作成（いま `dribblekeep` のみ） |
+| GET | `/v1/rooms/:code?app=` | 存在確認 |
+| GET | `/ws?room=&role=&deviceId=&app=` | WebSocket（Durable Object） |
 
-## 初回セットアップ（同じ Cloudflare アカウント）
+## Keep ルーム（Durable Object）
+
+`KeepRoom` が部屋ごとに状態と WS を持つ。出題は playPackage、進行は alarm。  
+UI（`dribblekeep.rojiura.app`）は当面 Render、ルーム／同期だけ CF。
 
 ```bash
 cd api
 npm install
-
-# リソース作成（一度だけ）
-npx wrangler d1 create tr-stats
-npx wrangler r2 bucket create tr-packages
-npx wrangler r2 bucket create tr-ads
-
-# 返ってきた database_id を wrangler.toml に書き、D1/R2 のコメントを外す
-
 npx wrangler deploy
 ```
 
-本番: https://tr-api.rojiura.app  
-（ネストした `api.tr.rojiura.app` は証明書が不安定なため使わない）
-
-## ローカル確認
+## ローカル
 
 ```bash
 npx wrangler dev
 curl -s http://127.0.0.1:8787/health
-curl -s -X POST http://127.0.0.1:8787/v1/bootstrap \
+curl -s -X POST http://127.0.0.1:8787/v1/rooms \
   -H 'content-type: application/json' \
-  -d '{"profile":{"prefecture":"東京","usageType":"group","groupSizeBand":"4-10"},"client":{"app":"peritap"},"lastAdAt":null,"skipDebt":0}'
+  -d '{"app":"dribblekeep"}'
 ```
