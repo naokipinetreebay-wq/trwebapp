@@ -48,7 +48,7 @@
         <div class="catalog-head">
           <h2 class="catalog-heading">トレーニング一覧</h2>
           <p class="catalog-lede">
-            下の区分を選ぶか、パネルを開いてください。アプリは横にスクロールできます。「開発予定」はまだ公開していません。
+            区分を開くと概要が出ます。アプリカードは横にスクロールできます。「開発予定」はまだ公開していません。
           </p>
         </div>
 
@@ -73,26 +73,40 @@
               <span class="acc-toggle" aria-hidden="true"></span>
             </span>
           </summary>
-          <nav class="apps-rail" aria-label="ビジョン">
-            <a class="app app-peri" href="https://peritap.rojiura.app">
-              <span class="app-kicker">PeriTap</span>
-              <span class="app-name">周辺視タップ</span>
-              <span class="app-desc">真ん中を見たまま、緑の数字と同じ端末をタップ。赤は押さない。</span>
-              <span class="app-cta">開く</span>
-            </a>
-            <a class="app app-saccade" href="https://saccade.rojiura.app">
-              <span class="app-kicker">Saccade</span>
-              <span class="app-name">サッケード</span>
-              <span class="app-desc">顔は動かさず、目だけで丸を追う。真ん中を通って端ではね返る。</span>
-              <span class="app-cta">開く</span>
-            </a>
-            <a class="app app-flash" href="https://flashmem.rojiura.app">
-              <span class="app-kicker">FlashMem</span>
-              <span class="app-name">瞬間視</span>
-              <span class="app-desc">一瞬の数字の場所を覚え、示された数字の端末をタップ。</span>
-              <span class="app-cta">開く</span>
-            </a>
-          </nav>
+          <div class="acc-body">
+            <div class="acc-panel panel-vision">
+              <p class="acc-kicker">Vision</p>
+              <h3 class="acc-panel-title">ビジョン</h3>
+              <p class="acc-panel-lead">
+                顔や体の向きはそのままに、目と注意力を使うトレーニングです。複数の端末に数字や目標を出し、周辺視・視線移動・瞬間の記憶をグラウンドで繰り返します。
+              </p>
+              <ul class="acc-app-list">
+                <li>周辺視タップ</li>
+                <li>サッケード</li>
+                <li>瞬間視</li>
+              </ul>
+            </div>
+            <nav class="apps-rail" aria-label="ビジョン">
+              <a class="app app-peri" href="https://peritap.rojiura.app">
+                <span class="app-kicker">PeriTap</span>
+                <span class="app-name">周辺視タップ</span>
+                <span class="app-desc">真ん中を見たまま、緑の数字と同じ端末をタップ。赤は押さない。</span>
+                <span class="app-cta">開く</span>
+              </a>
+              <a class="app app-saccade" href="https://saccade.rojiura.app">
+                <span class="app-kicker">Saccade</span>
+                <span class="app-name">サッケード</span>
+                <span class="app-desc">顔は動かさず、目だけで丸を追う。真ん中を通って端ではね返る。</span>
+                <span class="app-cta">開く</span>
+              </a>
+              <a class="app app-flash" href="https://flashmem.rojiura.app">
+                <span class="app-kicker">FlashMem</span>
+                <span class="app-name">瞬間視</span>
+                <span class="app-desc">一瞬の数字の場所を覚え、示された数字の端末をタップ。</span>
+                <span class="app-cta">開く</span>
+              </a>
+            </nav>
+          </div>
         </details>
 
         <details class="acc" id="acc-react">
@@ -107,20 +121,33 @@
               <span class="acc-toggle" aria-hidden="true"></span>
             </span>
           </summary>
-          <nav class="apps-rail" aria-label="反応">
-            <a class="app app-tap" href="https://numbertap.rojiura.app">
-              <span class="app-kicker">NumberTap</span>
-              <span class="app-name">順番タップ</span>
-              <span class="app-desc">1から0まで、出ている数字を順にタップ。かかった時間を計る。</span>
-              <span class="app-cta">開く</span>
-            </a>
-            <a class="app app-shuttle" href="https://shuttletouch.rojiura.app">
-              <span class="app-kicker">Shuttle Touch</span>
-              <span class="app-name">シャトルタッチ</span>
-              <span class="app-desc">光った端末をタップして次へ。回数までの秒数、または緑と赤の勝負。</span>
-              <span class="app-cta">開く</span>
-            </a>
-          </nav>
+          <div class="acc-body">
+            <div class="acc-panel panel-react">
+              <p class="acc-kicker">React</p>
+              <h3 class="acc-panel-title">反応</h3>
+              <p class="acc-panel-lead">
+                光や数字が出た端末へ、すばやく正確に触る系です。順番どおり進める計測型と、光を追って次へ渡すシャトル型があります。個人でも少人数でも使えます。
+              </p>
+              <ul class="acc-app-list">
+                <li>順番タップ</li>
+                <li>シャトルタッチ</li>
+              </ul>
+            </div>
+            <nav class="apps-rail" aria-label="反応">
+              <a class="app app-tap" href="https://numbertap.rojiura.app">
+                <span class="app-kicker">NumberTap</span>
+                <span class="app-name">順番タップ</span>
+                <span class="app-desc">1から0まで、出ている数字を順にタップ。かかった時間を計る。</span>
+                <span class="app-cta">開く</span>
+              </a>
+              <a class="app app-shuttle" href="https://shuttletouch.rojiura.app">
+                <span class="app-kicker">Shuttle Touch</span>
+                <span class="app-name">シャトルタッチ</span>
+                <span class="app-desc">光った端末をタップして次へ。回数までの秒数、または緑と赤の勝負。</span>
+                <span class="app-cta">開く</span>
+              </a>
+            </nav>
+          </div>
         </details>
 
         <details class="acc" id="acc-dribble">
@@ -135,32 +162,47 @@
               <span class="acc-toggle" aria-hidden="true"></span>
             </span>
           </summary>
-          <nav class="apps-rail" aria-label="ドリブル">
-            <a class="app app-keep" href="https://dribblekeep.rojiura.app">
-              <span class="app-kicker">Keep</span>
-              <span class="app-name">ドリブルキープ</span>
-              <span class="app-desc">赤の端末が敵。ボールを隠してキープする。ほかの端末は緑。</span>
-              <span class="app-cta">開く</span>
-            </a>
-            <a class="app app-escape" href="https://escape.rojiura.app">
-              <span class="app-kicker">Escape</span>
-              <span class="app-name">エスケープ</span>
-              <span class="app-desc">緑が1台だけ空き。そこへボールを逃がす。ほかの端末は敵。</span>
-              <span class="app-cta">開く</span>
-            </a>
-            <a class="app app-drive" href="https://drive.rojiura.app">
-              <span class="app-kicker">Drive</span>
-              <span class="app-name">ドライブ</span>
-              <span class="app-desc">列の緑のすき間をめがけて、手前から奥へボールを運ぶ。</span>
-              <span class="app-cta">開く</span>
-            </a>
-            <div class="app app-dual app-planned" aria-disabled="true">
-              <span class="app-kicker">Dual Task</span>
-              <span class="app-name">デュアルタスク</span>
-              <span class="app-desc">ドリブル系とビジョンを同時に行う（例: キープしながら周辺視）。</span>
-              <span class="app-cta">開発予定</span>
+          <div class="acc-body">
+            <div class="acc-panel panel-dribble">
+              <p class="acc-kicker">Dribble</p>
+              <h3 class="acc-panel-title">ドリブル</h3>
+              <p class="acc-panel-lead">
+                端末を敵や空きスペースに見立て、ボールをキープ・エスケープ・押し込む判断を繰り返します。色の切り替わりに合わせて、実空間での運び方を練習します。
+              </p>
+              <ul class="acc-app-list">
+                <li>ドリブルキープ</li>
+                <li>エスケープ</li>
+                <li>ドライブ</li>
+                <li class="is-planned">デュアルタスク（開発予定）</li>
+              </ul>
             </div>
-          </nav>
+            <nav class="apps-rail" aria-label="ドリブル">
+              <a class="app app-keep" href="https://dribblekeep.rojiura.app">
+                <span class="app-kicker">Keep</span>
+                <span class="app-name">ドリブルキープ</span>
+                <span class="app-desc">赤の端末が敵。ボールを隠してキープする。ほかの端末は緑。</span>
+                <span class="app-cta">開く</span>
+              </a>
+              <a class="app app-escape" href="https://escape.rojiura.app">
+                <span class="app-kicker">Escape</span>
+                <span class="app-name">エスケープ</span>
+                <span class="app-desc">緑が1台だけ空き。そこへボールを逃がす。ほかの端末は敵。</span>
+                <span class="app-cta">開く</span>
+              </a>
+              <a class="app app-drive" href="https://drive.rojiura.app">
+                <span class="app-kicker">Drive</span>
+                <span class="app-name">ドライブ</span>
+                <span class="app-desc">列の緑のすき間をめがけて、手前から奥へボールを運ぶ。</span>
+                <span class="app-cta">開く</span>
+              </a>
+              <div class="app app-dual app-planned" aria-disabled="true">
+                <span class="app-kicker">Dual Task</span>
+                <span class="app-name">デュアルタスク</span>
+                <span class="app-desc">ドリブル系とビジョンを同時に行う（例: キープしながら周辺視）。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+            </nav>
+          </div>
         </details>
 
         <details class="acc" id="acc-personal">
@@ -175,14 +217,26 @@
               <span class="acc-toggle" aria-hidden="true"></span>
             </span>
           </summary>
-          <nav class="apps-rail" aria-label="パーソナル">
-            <a class="app app-scan" href="https://fieldscan.rojiura.app">
-              <span class="app-kicker">FieldScan</span>
-              <span class="app-name">首振りスキャン</span>
-              <span class="app-desc">周囲のフリーを見つける。緑／半分／赤を複数端末で同期。</span>
-              <span class="app-cta">開く</span>
-            </a>
-          </nav>
+          <div class="acc-body">
+            <div class="acc-panel panel-personal">
+              <p class="acc-kicker">Personal</p>
+              <h3 class="acc-panel-title">パーソナル</h3>
+              <p class="acc-panel-lead">
+                ひとり、または少人数で周囲をスキャンする練習向きです。首振りスキャンは個人利用が中心ですが、台数を増やせばグループの視野共有にも使えます。
+              </p>
+              <ul class="acc-app-list">
+                <li>首振りスキャン</li>
+              </ul>
+            </div>
+            <nav class="apps-rail" aria-label="パーソナル">
+              <a class="app app-scan" href="https://fieldscan.rojiura.app">
+                <span class="app-kicker">FieldScan</span>
+                <span class="app-name">首振りスキャン</span>
+                <span class="app-desc">周囲のフリーを見つける。緑／半分／赤を複数端末で同期。</span>
+                <span class="app-cta">開く</span>
+              </a>
+            </nav>
+          </div>
         </details>
 
         <details class="acc" id="acc-group">
@@ -197,26 +251,40 @@
               <span class="acc-toggle" aria-hidden="true"></span>
             </span>
           </summary>
-          <nav class="apps-rail" aria-label="グループ">
-            <a class="app app-goal" href="https://randomgoal.rojiura.app">
-              <span class="app-kicker">Random Goal</span>
-              <span class="app-name">ランダムゴール</span>
-              <span class="app-desc">チーム色のゴールが切り替わる。狙う／守るを同時に。</span>
-              <span class="app-cta">開く</span>
-            </a>
-            <div class="app app-call app-planned" aria-disabled="true">
-              <span class="app-kicker">Pass &amp; Call</span>
-              <span class="app-name">パス&amp;コール</span>
-              <span class="app-desc">光った色の方へパスする判断トレーニング。</span>
-              <span class="app-cta">開発予定</span>
+          <div class="acc-body">
+            <div class="acc-panel panel-group">
+              <p class="acc-kicker">Group</p>
+              <h3 class="acc-panel-title">グループ</h3>
+              <p class="acc-panel-lead">
+                チームやユニットで、色や役割を見ながら同時に判断する系です。ゴールの色切り替えに加え、今後はパスの受け手を見つけるコール系もここに置きます。
+              </p>
+              <ul class="acc-app-list">
+                <li>ランダムゴール</li>
+                <li class="is-planned">パス&amp;コール（開発予定）</li>
+                <li class="is-planned">フリーマンパス（開発予定）</li>
+              </ul>
             </div>
-            <div class="app app-free app-planned" aria-disabled="true">
-              <span class="app-kicker">Freeman Pass</span>
-              <span class="app-name">フリーマンパス</span>
-              <span class="app-desc">フリーな選手にパスを出すトレーニング。</span>
-              <span class="app-cta">開発予定</span>
-            </div>
-          </nav>
+            <nav class="apps-rail" aria-label="グループ">
+              <a class="app app-goal" href="https://randomgoal.rojiura.app">
+                <span class="app-kicker">Random Goal</span>
+                <span class="app-name">ランダムゴール</span>
+                <span class="app-desc">チーム色のゴールが切り替わる。狙う／守るを同時に。</span>
+                <span class="app-cta">開く</span>
+              </a>
+              <div class="app app-call app-planned" aria-disabled="true">
+                <span class="app-kicker">Pass &amp; Call</span>
+                <span class="app-name">パス&amp;コール</span>
+                <span class="app-desc">光った色の方へパスする判断トレーニング。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+              <div class="app app-free app-planned" aria-disabled="true">
+                <span class="app-kicker">Freeman Pass</span>
+                <span class="app-name">フリーマンパス</span>
+                <span class="app-desc">フリーな選手にパスを出すトレーニング。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+            </nav>
+          </div>
         </details>
 
         <details class="acc" id="acc-measure">
@@ -231,45 +299,60 @@
               <span class="acc-toggle" aria-hidden="true"></span>
             </span>
           </summary>
-          <nav class="apps-rail" aria-label="計測">
-            <div class="app app-sprint app-planned" aria-disabled="true">
-              <span class="app-kicker">Sprint</span>
-              <span class="app-name">スプリント計測</span>
-              <span class="app-desc">2〜3台で50m（任意で30m）。ピッピッピポーンからゴール通過まで。</span>
-              <span class="app-cta">開発予定</span>
+          <div class="acc-body">
+            <div class="acc-panel panel-measure">
+              <p class="acc-kicker">Measure</p>
+              <h3 class="acc-panel-title">計測</h3>
+              <p class="acc-panel-lead">
+                「ピッピッピポーン」で時刻をそろえ、通過ゲートや映像コマからタイム・速度を出します。スプリントやキック、アジリティなど、記録系をここにまとめます。
+              </p>
+              <ul class="acc-app-list">
+                <li class="is-planned">スプリント計測</li>
+                <li class="is-planned">キック速度</li>
+                <li class="is-planned">アジリティ</li>
+                <li class="is-planned">反復サイドステップ</li>
+                <li class="is-planned">ジャンプ／滞空</li>
+              </ul>
             </div>
-            <div class="app app-kick app-planned" aria-disabled="true">
-              <span class="app-kicker">Kick Speed</span>
-              <span class="app-name">キック速度</span>
-              <span class="app-desc">インパクトから通過までを録画し、距離と秒数から時速を出す。</span>
-              <span class="app-cta">開発予定</span>
-            </div>
-            <div class="app app-agility app-planned" aria-disabled="true">
-              <span class="app-kicker">Agility</span>
-              <span class="app-name">アジリティ</span>
-              <span class="app-desc">Tテスト／プロアジリティ。コーン位置の端末で区間タイム。</span>
-              <span class="app-cta">開発予定</span>
-            </div>
-            <div class="app app-side app-planned" aria-disabled="true">
-              <span class="app-kicker">Side Step</span>
-              <span class="app-name">反復サイドステップ</span>
-              <span class="app-desc">左右ゲートの通過回数とタイム。</span>
-              <span class="app-cta">開発予定</span>
-            </div>
-            <div class="app app-jump app-planned" aria-disabled="true">
-              <span class="app-kicker">Jump</span>
-              <span class="app-name">ジャンプ／滞空</span>
-              <span class="app-desc">離地から着地までを映像コマで計測。60fps推奨。</span>
-              <span class="app-cta">開発予定</span>
-            </div>
-          </nav>
+            <nav class="apps-rail" aria-label="計測">
+              <div class="app app-sprint app-planned" aria-disabled="true">
+                <span class="app-kicker">Sprint</span>
+                <span class="app-name">スプリント計測</span>
+                <span class="app-desc">2〜3台で50m（任意で30m）。ピッピッピポーンからゴール通過まで。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+              <div class="app app-kick app-planned" aria-disabled="true">
+                <span class="app-kicker">Kick Speed</span>
+                <span class="app-name">キック速度</span>
+                <span class="app-desc">インパクトから通過までを録画し、距離と秒数から時速を出す。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+              <div class="app app-agility app-planned" aria-disabled="true">
+                <span class="app-kicker">Agility</span>
+                <span class="app-name">アジリティ</span>
+                <span class="app-desc">Tテスト／プロアジリティ。コーン位置の端末で区間タイム。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+              <div class="app app-side app-planned" aria-disabled="true">
+                <span class="app-kicker">Side Step</span>
+                <span class="app-name">反復サイドステップ</span>
+                <span class="app-desc">左右ゲートの通過回数とタイム。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+              <div class="app app-jump app-planned" aria-disabled="true">
+                <span class="app-kicker">Jump</span>
+                <span class="app-name">ジャンプ／滞空</span>
+                <span class="app-desc">離地から着地までを映像コマで計測。60fps推奨。</span>
+                <span class="app-cta">開発予定</span>
+              </div>
+            </nav>
+          </div>
         </details>
       </div>
     </main>
     <script>
       (function () {
-        var chips = document.querySelectorAll(".cat-chip");
-        chips.forEach(function (chip) {
+        document.querySelectorAll(".cat-chip").forEach(function (chip) {
           chip.addEventListener("click", function () {
             var id = chip.getAttribute("href");
             if (!id || id.charAt(0) !== "#") return;
