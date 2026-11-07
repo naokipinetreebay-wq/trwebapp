@@ -29,6 +29,14 @@ class_name = "KeepRoom"
 name = "DRIVE_ROOM"
 class_name = "DriveRoom"
 
+[[durable_objects.bindings]]
+name = "FIELDSCAN_ROOM"
+class_name = "FieldScanRoom"
+
+[[durable_objects.bindings]]
+name = "GOAL_ROOM"
+class_name = "GoalRoom"
+
 [[migrations]]
 tag = "v1-keep-room"
 new_sqlite_classes = ["KeepRoom"]
@@ -36,3 +44,7 @@ new_sqlite_classes = ["KeepRoom"]
 [[migrations]]
 tag = "v2-drive-room"
 new_sqlite_classes = ["DriveRoom"]
+
+[[migrations]]
+tag = "v3-scan-goal"
+new_sqlite_classes = ["FieldScanRoom", "GoalRoom"]

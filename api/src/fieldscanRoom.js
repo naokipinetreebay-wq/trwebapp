@@ -1,0 +1,635 @@
+/**
+ * FieldScan 用ルーム Durable Object。
+ * Hibernation WebSocket + alarm で playPackage（自動モード）を進める。状態は storage に保存。
+ * fieldscanTR/src/server/room.ts と src/lib/types.ts の移植。
+ */
+
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const MAX_DISPLAYS = 12;
+const PACKAGE_ROUNDS = 40;
+const BLACK_GAP_MS = 280;
+
+/** Must match DisplayScreen local timings */
+const TRANSITION_LEAD_MS = {
+  instant: 0,
+  /** Remaining-seconds / lifetime cues run on the current color */
+  countdown: 0,
+  blink: 0,
+  fade: 0,
+};
+const TRANSITIONS = ["instant", "countdown", "blink", "fade"];
+const DISPLAY_STATES = ["free", "marked", "enemy"];
+
+const DEFAULT_CONFIG = {
+  assignMode: "allyN",
+  allyCount: 2,
+  allowMarked: true,
+  /** 0 = 味方はすべて緑フル。上げるとその台数だけ半分マーク */
+  markedCount: 0,
+  forbidZeroAlly: true,
+  timingMode: "random",
+  fixedSeconds: 3,
+  randomMinSeconds: 2,
+  randomMaxSeconds: 5,
+  syncMode: "simultaneous",
+  staggerMaxSeconds: 2,
+  transition: "countdown",
+  sound: "off",
+  manualAssign: "random",
+  running: false,
+};
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function num(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function pickTransition(config) {
+  if (config.transition !== "random") return config.transition;
+  return TRANSITIONS[Math.floor(Math.random() * TRANSITIONS.length)];
+}
+
+function nextIntervalMs(config) {
+  if (config.timingMode === "fixed") {
+    return Math.max(0.5, config.fixedSeconds) * 1000;
+  }
+  if (config.timingMode === "random") {
+    const min = Math.min(config.randomMinSeconds, config.randomMaxSeconds);
+    const max = Math.max(config.randomMinSeconds, config.randomMaxSeconds);
+    return (min + Math.random() * (max - min)) * 1000;
+  }
+  return 0;
+}
+
+function emptyState(code) {
+  return {
+    code,
+    config: { ...DEFAULT_CONFIG },
+    displays: {},
+    roundId: 0,
+    nextChangeAt: null,
+    transition: "instant",
+    transitionEndsAt: null,
+    blackEndsAt: null,
+    previousStates: {},
+    deviceOffsets: {},
+    roundStartedAt: null,
+    playPackage: null,
+    packageIndex: 0,
+    lastActivity: Date.now(),
+  };
+}
+
+export class FieldScanRoom {
+  constructor(state, env) {
+    this.ctx = state;
+    this.env = env;
+    this.data = emptyState("");
+    this.ready = this.ctx.blockConcurrencyWhile(async () => {
+      const saved = await this.ctx.storage.get("state");
+      if (saved && typeof saved === "object") this.data = saved;
+    });
+  }
+
+  async persist() {
+    this.data.lastActivity = Date.now();
+    await this.ctx.storage.put("state", this.data);
+  }
+
+  async fetch(request) {
+    await this.ready;
+    const url = new URL(request.url);
+
+    if (request.method === "POST" && url.pathname === "/init") {
+      const body = await request.json().catch(() => ({}));
+      const code = String(body.code || "").toUpperCase();
+      if (!code) return Response.json({ error: "code_required" }, { status: 400 });
+      if (!this.data.code) {
+        this.data = emptyState(code);
+        await this.persist();
+      }
+      return Response.json({ ok: true, code: this.data.code, app: "fieldscan" });
+    }
+
+    if (request.method === "GET" && url.pathname === "/exists") {
+      return Response.json({ exists: Boolean(this.data.code), code: this.data.code || null });
+    }
+
+    if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+      const role = url.searchParams.get("role");
+      const deviceId = url.searchParams.get("deviceId") || "";
+      const label = url.searchParams.get("label") || "";
+      if (role !== "controller" && role !== "display") {
+        return new Response("bad role", { status: 400 });
+      }
+      if (!deviceId) return new Response("deviceId required", { status: 400 });
+      if (!this.data.code) return new Response("room not found", { status: 404 });
+
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      this.ctx.acceptWebSocket(server);
+      server.serializeAttachment({ role, deviceId, label });
+
+      if (role === "display") {
+        const result = this.addDisplay(deviceId, label);
+        if (!result.ok) {
+          this.sendTo(server, { type: "error", message: result.error });
+          server.close(1008, "display_limit");
+          return new Response(null, { status: 101, webSocket: client });
+        }
+      }
+      await this.persist();
+      this.sendTo(server, { type: "snapshot", snapshot: this.snapshot() });
+      if (role === "display") this.broadcast();
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    return new Response("not found", { status: 404 });
+  }
+
+  async webSocketMessage(ws, message) {
+    await this.ready;
+    let msg;
+    try {
+      msg = JSON.parse(typeof message === "string" ? message : new TextDecoder().decode(message));
+    } catch {
+      return;
+    }
+    if (!msg || typeof msg !== "object") return;
+    const meta = ws.deserializeAttachment() || {};
+
+    if (msg.type === "ping") {
+      this.sendTo(ws, { type: "pong" });
+      return;
+    }
+    if (msg.type === "hello") {
+      if (msg.role === "display" && msg.deviceId) {
+        const result = this.addDisplay(String(msg.deviceId), msg.label);
+        if (!result.ok) {
+          this.sendTo(ws, { type: "error", message: result.error });
+          return;
+        }
+        ws.serializeAttachment({
+          role: "display",
+          deviceId: String(msg.deviceId),
+          label: msg.label ? String(msg.label) : "",
+        });
+        await this.persist();
+        this.broadcast();
+      } else {
+        if (msg.role === "controller" && msg.deviceId) {
+          ws.serializeAttachment({
+            role: "controller",
+            deviceId: String(msg.deviceId),
+            label: msg.label ? String(msg.label) : "",
+          });
+        }
+        this.sendTo(ws, { type: "snapshot", snapshot: this.snapshot() });
+      }
+      return;
+    }
+    if (meta.role !== "controller") {
+      this.sendTo(ws, { type: "error", message: "コントローラのみ操作できます" });
+      return;
+    }
+
+    if (msg.type === "updateConfig") {
+      await this.updateConfig(msg.config || {});
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "setLabel" && msg.deviceId) {
+      const d = this.data.displays[msg.deviceId];
+      if (d) d.label = String(msg.label || "").slice(0, 24);
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "start") {
+      await this.start();
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "stop") {
+      await this.stop();
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "next") {
+      await this.next(msg.states);
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+  }
+
+  async webSocketClose(ws) {
+    await this.ready;
+    const meta = ws.deserializeAttachment() || {};
+    if (meta.role === "display") {
+      await this.persist();
+      this.broadcast(ws);
+    }
+  }
+
+  async webSocketError(ws) {
+    await this.webSocketClose(ws);
+  }
+
+  async alarm() {
+    await this.ready;
+    const { config } = this.data;
+    if (!config.running || config.timingMode === "manual" || !this.data.playPackage) return;
+    this.data.packageIndex += 1;
+    const round = this.data.playPackage.rounds[this.data.packageIndex];
+    if (!round) return;
+    this.applyPlayRound(round);
+    await this.armPackage();
+    await this.persist();
+    this.broadcast();
+  }
+
+  /* ---------- displays ---------- */
+
+  addDisplay(deviceId, label) {
+    const clean = label ? String(label).slice(0, 24) : "";
+    const existing = this.data.displays[deviceId];
+    if (existing) {
+      if (clean) existing.label = clean;
+      return { ok: true };
+    }
+    const count = Object.keys(this.data.displays).length;
+    if (count >= MAX_DISPLAYS) {
+      return { ok: false, error: "Display上限（12台）に達しています" };
+    }
+    this.data.displays[deviceId] = {
+      id: deviceId,
+      label: clean || `D${count + 1}`,
+      // Mid-session join waits for the next natural round (do not reset everyone)
+      state: "free",
+    };
+    return { ok: true };
+  }
+
+  /** 開いている display ソケットの deviceId（exclude は閉じ中のソケット） */
+  connectedDisplayIds(exclude) {
+    const ids = new Set();
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === exclude) continue;
+      const meta = ws.deserializeAttachment() || {};
+      if (meta.role === "display" && meta.deviceId) ids.add(meta.deviceId);
+    }
+    return ids;
+  }
+
+  /* ---------- config / control ---------- */
+
+  async updateConfig(partial) {
+    const cfg = this.data.config;
+    const prevTiming = cfg.timingMode;
+    const next = { ...cfg };
+    for (const key of Object.keys(DEFAULT_CONFIG)) {
+      if (key === "running") continue;
+      if (partial[key] !== undefined) next[key] = partial[key];
+    }
+
+    if (next.assignMode !== "fullRandom") next.assignMode = "allyN";
+    if (next.timingMode !== "fixed" && next.timingMode !== "manual") next.timingMode = "random";
+    next.allowMarked = !!next.allowMarked;
+    next.forbidZeroAlly = !!next.forbidZeroAlly;
+    // Do NOT clamp allyCount to current display count — phones may still be joining.
+    next.allyCount = clamp(Math.round(num(next.allyCount, DEFAULT_CONFIG.allyCount)), 0, MAX_DISPLAYS);
+    if (next.allowMarked) {
+      next.markedCount = clamp(
+        Math.round(num(next.markedCount, 0)),
+        0,
+        next.allyCount
+      );
+    } else {
+      next.markedCount = 0;
+    }
+    next.fixedSeconds = clamp(num(next.fixedSeconds, DEFAULT_CONFIG.fixedSeconds), 0.5, 60);
+    next.randomMinSeconds = clamp(num(next.randomMinSeconds, DEFAULT_CONFIG.randomMinSeconds), 0.5, 60);
+    next.randomMaxSeconds = clamp(num(next.randomMaxSeconds, DEFAULT_CONFIG.randomMaxSeconds), 0.5, 60);
+    next.staggerMaxSeconds = clamp(num(next.staggerMaxSeconds, 2), 0, 10);
+    if (next.syncMode !== "staggered") next.syncMode = "simultaneous";
+    if (next.transition !== "random" && !TRANSITIONS.includes(next.transition)) {
+      next.transition = DEFAULT_CONFIG.transition;
+    }
+    if (next.sound !== "on") next.sound = "off";
+    if (next.manualAssign !== "pick") next.manualAssign = "random";
+
+    this.data.config = next;
+    await this.applyTimingModeChange(prevTiming);
+  }
+
+  async start() {
+    this.data.config.running = true;
+    if (this.data.config.timingMode === "manual") {
+      await this.ctx.storage.deleteAlarm();
+      this.data.playPackage = null;
+      this.data.packageIndex = 0;
+      this.data.nextChangeAt = null;
+      return;
+    }
+    await this.beginAutoPackage();
+  }
+
+  async stop() {
+    await this.ctx.storage.deleteAlarm();
+    this.data.config.running = false;
+    this.data.playPackage = null;
+    this.data.packageIndex = 0;
+    this.data.nextChangeAt = null;
+    this.data.transitionEndsAt = null;
+    this.data.blackEndsAt = null;
+  }
+
+  async next(states) {
+    if (!this.data.config.running) this.data.config.running = true;
+    const { timingMode, manualAssign } = this.data.config;
+    const pending = timingMode === "manual" && manualAssign === "pick" ? states || null : null;
+    if (timingMode === "manual") {
+      this.data.playPackage = null;
+      this.data.packageIndex = 0;
+      await this.assignRound(pending);
+      return;
+    }
+    await this.beginAutoPackage();
+  }
+
+  maxStaggerMs() {
+    return this.data.config.syncMode === "staggered"
+      ? Math.max(0, (this.data.config.staggerMaxSeconds ?? 2) * 1000)
+      : 0;
+  }
+
+  async applyTimingModeChange(prevTiming) {
+    if (!this.data.config.running) return;
+    if (this.data.config.timingMode === "manual") {
+      await this.ctx.storage.deleteAlarm();
+      this.data.playPackage = null;
+      this.data.packageIndex = 0;
+      this.data.nextChangeAt = null;
+      return;
+    }
+    if (prevTiming === "manual" || !this.data.playPackage) {
+      await this.beginAutoPackage();
+    }
+  }
+
+  /* ---------- auto mode (playPackage + alarm) ---------- */
+
+  async beginAutoPackage() {
+    await this.ctx.storage.deleteAlarm();
+    this.data.playPackage = this.buildPlayPackage(PACKAGE_ROUNDS);
+    this.data.packageIndex = 0;
+    const first = this.data.playPackage.rounds[0];
+    if (first) this.applyPlayRound(first);
+    await this.armPackage();
+  }
+
+  planOffsets(ids) {
+    const maxStaggerMs = this.maxStaggerMs();
+    const offsets = {};
+    if (maxStaggerMs > 0 && ids.length > 1) {
+      const order = shuffle(ids);
+      for (let i = 0; i < order.length; i++) {
+        offsets[order[i]] = Math.round((i / (order.length - 1)) * maxStaggerMs);
+      }
+    } else {
+      for (const id of ids) offsets[id] = 0;
+    }
+    return offsets;
+  }
+
+  buildPlayPackage(count, opts = {}) {
+    const ids = Object.keys(this.data.displays);
+    let previous = { ...(opts.previous || {}) };
+    if (!opts.previous) {
+      for (const d of Object.values(this.data.displays)) previous[d.id] = d.state;
+    }
+
+    let t = opts.startAt ?? Date.now();
+    let nextRoundId = opts.fromRoundId ?? this.data.roundId + 1;
+    const rounds = [];
+
+    for (let i = 0; i < count; i++) {
+      const states = this.assignStates(null);
+      for (const id of ids) {
+        if (!(id in states)) states[id] = previous[id] ?? "free";
+      }
+      const transition = pickTransition(this.data.config);
+      const offsets = this.planOffsets(ids);
+      const lead = TRANSITION_LEAD_MS[transition] ?? 0;
+      const interval = nextIntervalMs(this.data.config);
+      const nextChangeAt = t + interval + this.maxStaggerMs() + lead + BLACK_GAP_MS + 200;
+      rounds.push({
+        roundId: nextRoundId++,
+        states,
+        previousStates: { ...previous },
+        deviceOffsets: offsets,
+        transition,
+        roundStartedAt: t,
+        nextChangeAt,
+      });
+      previous = states;
+      t = nextChangeAt;
+    }
+    return { rounds };
+  }
+
+  applyPlayRound(round) {
+    const data = this.data;
+    data.roundId = round.roundId;
+    data.previousStates = { ...round.previousStates };
+    data.deviceOffsets = { ...round.deviceOffsets };
+    data.transition = round.transition;
+    data.roundStartedAt = round.roundStartedAt;
+    const lead = TRANSITION_LEAD_MS[round.transition] ?? 0;
+    data.transitionEndsAt = round.roundStartedAt + lead;
+    data.blackEndsAt = round.roundStartedAt + lead + BLACK_GAP_MS;
+    data.nextChangeAt = round.nextChangeAt;
+    for (const [id, state] of Object.entries(round.states)) {
+      const d = data.displays[id];
+      if (d) d.state = state;
+    }
+  }
+
+  async armPackage() {
+    await this.ctx.storage.deleteAlarm();
+    const data = this.data;
+    if (!data.config.running || data.config.timingMode === "manual" || !data.playPackage) {
+      data.nextChangeAt = null;
+      return;
+    }
+    const nextIndex = data.packageIndex + 1;
+    if (nextIndex >= data.playPackage.rounds.length) {
+      const last = data.playPackage.rounds[data.playPackage.rounds.length - 1];
+      const more = this.buildPlayPackage(PACKAGE_ROUNDS, {
+        fromRoundId: last.roundId + 1,
+        startAt: last.nextChangeAt,
+        previous: last.states,
+      });
+      const kept = data.playPackage.rounds.slice(-2);
+      data.playPackage = { rounds: [...kept, ...more.rounds] };
+      data.packageIndex = Math.max(0, kept.length - 1);
+    }
+    const next = data.playPackage.rounds[data.packageIndex + 1];
+    if (!next) return;
+    await this.ctx.storage.setAlarm(Math.max(Date.now() + 1, next.roundStartedAt));
+  }
+
+  /* ---------- assignment ---------- */
+
+  assignStates(pending) {
+    const { config } = this.data;
+    const ids = Object.keys(this.data.displays);
+    const result = {};
+    if (ids.length === 0) return result;
+
+    if (config.timingMode === "manual" && config.manualAssign === "pick") {
+      for (const id of ids) {
+        const chosen = pending?.[id];
+        const current = this.data.displays[id]?.state ?? "free";
+        result[id] = DISPLAY_STATES.includes(chosen) ? chosen : current;
+      }
+      return result;
+    }
+
+    if (config.assignMode === "fullRandom") {
+      for (const id of ids) {
+        const r = Math.random();
+        result[id] = r < 0.34 ? "free" : r < 0.67 ? "marked" : "enemy";
+      }
+      if (config.forbidZeroAlly) {
+        const allies = ids.filter((id) => result[id] !== "enemy");
+        if (allies.length === 0) {
+          const pick = ids[Math.floor(Math.random() * ids.length)];
+          result[pick] = config.allowMarked && Math.random() < 0.5 ? "marked" : "free";
+        }
+      }
+      return result;
+    }
+
+    const allyCount = clamp(config.allyCount, config.forbidZeroAlly ? 1 : 0, ids.length);
+    const shuffled = shuffle(ids);
+    const allies = shuffled.slice(0, allyCount);
+    const enemies = shuffled.slice(allyCount);
+
+    let markedCount = 0;
+    if (config.allowMarked && allyCount > 0) {
+      // 台数は指定しない。0〜味方台数のあいだで毎回ランダム
+      markedCount = Math.floor(Math.random() * (allyCount + 1));
+    }
+    const markedSet = new Set(shuffle(allies).slice(0, markedCount));
+
+    for (const id of allies) result[id] = markedSet.has(id) ? "marked" : "free";
+    for (const id of enemies) result[id] = "enemy";
+    return result;
+  }
+
+  /** Manual mode: package なしで 1 ラウンドだけ配る */
+  async assignRound(pending) {
+    await this.ctx.storage.deleteAlarm();
+    const data = this.data;
+    const previous = {};
+    for (const d of Object.values(data.displays)) previous[d.id] = d.state;
+    const states = this.assignStates(pending);
+    data.roundId += 1;
+    data.transition = pickTransition(data.config);
+    data.previousStates = previous;
+
+    for (const [id, state] of Object.entries(states)) {
+      const d = data.displays[id];
+      if (d) d.state = state;
+    }
+
+    data.deviceOffsets = this.planOffsets(Object.keys(data.displays));
+
+    const lead = TRANSITION_LEAD_MS[data.transition] ?? 0;
+    const now = Date.now();
+    data.roundStartedAt = now;
+    data.transitionEndsAt = now + lead;
+    data.blackEndsAt = now + lead + BLACK_GAP_MS;
+    data.nextChangeAt = null;
+  }
+
+  /* ---------- snapshot / io ---------- */
+
+  snapshot(exclude) {
+    const data = this.data;
+    const connected = this.connectedDisplayIds(exclude);
+    const primaryStates = {};
+    const displays = Object.values(data.displays).map((d) => {
+      primaryStates[d.id] = d.state;
+      return {
+        id: d.id,
+        label: d.label,
+        state: d.state,
+        connected: connected.has(d.id),
+      };
+    });
+    return {
+      code: data.code,
+      config: data.config,
+      displays,
+      roundId: data.roundId,
+      primaryStates,
+      previousStates: { ...data.previousStates },
+      deviceOffsets: { ...data.deviceOffsets },
+      roundStartedAt: data.roundStartedAt,
+      nextChangeAt: data.nextChangeAt,
+      transition: data.transition,
+      transitionEndsAt: data.transitionEndsAt,
+      blackEndsAt: data.blackEndsAt,
+      playPackage:
+        data.config.running && data.config.timingMode !== "manual" ? data.playPackage : null,
+      serverNow: Date.now(),
+    };
+  }
+
+  sendTo(ws, payload) {
+    try {
+      ws.send(JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  broadcast(exclude) {
+    const payload = JSON.stringify({ type: "snapshot", snapshot: this.snapshot(exclude) });
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === exclude) continue;
+      try {
+        ws.send(payload);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+export function randomRoomCode(length = 6) {
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  }
+  return out;
+}

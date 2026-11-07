@@ -5,9 +5,11 @@
  */
 
 import { DriveRoom } from "./driveRoom.js";
+import { FieldScanRoom } from "./fieldscanRoom.js";
+import { GoalRoom } from "./goalRoom.js";
 import { KeepRoom, LONE_APPS, randomRoomCode } from "./keepRoom.js";
 
-export { KeepRoom, DriveRoom };
+export { KeepRoom, DriveRoom, FieldScanRoom, GoalRoom };
 
 const HOUR_MS = 60 * 60 * 1000;
 const CORS = {
@@ -16,7 +18,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-const ROOM_APPS = new Set([...LONE_APPS, "drive"]);
+const ROOM_APPS = new Set([...LONE_APPS, "drive", "fieldscan", "randomgoal"]);
 
 export default {
   async fetch(request, env) {
@@ -60,6 +62,14 @@ function roomStub(env, app, code) {
   if (app === "drive") {
     const id = env.DRIVE_ROOM.idFromName(`${app}:${code}`);
     return env.DRIVE_ROOM.get(id);
+  }
+  if (app === "fieldscan") {
+    const id = env.FIELDSCAN_ROOM.idFromName(`${app}:${code}`);
+    return env.FIELDSCAN_ROOM.get(id);
+  }
+  if (app === "randomgoal") {
+    const id = env.GOAL_ROOM.idFromName(`${app}:${code}`);
+    return env.GOAL_ROOM.get(id);
   }
   if (LONE_APPS.includes(app)) {
     const id = env.KEEP_ROOM.idFromName(`${app}:${code}`);
