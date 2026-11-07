@@ -43,15 +43,35 @@
       </section>
 
       <div class="catalog" id="catalog">
-        <h2 class="catalog-heading">トレーニング一覧</h2>
-        <p class="catalog-lede">区分を開いてアプリを選んでください。「開発予定」はまだ公開していません。</p>
+        <div class="catalog-head">
+          <h2 class="catalog-heading">トレーニング一覧</h2>
+          <p class="catalog-lede">
+            下の区分を選ぶか、パネルを開いてください。アプリは横にスクロールできます。「開発予定」はまだ公開していません。
+          </p>
+        </div>
 
-        <details class="acc">
+        <nav class="cat-scroll" aria-label="区分ショートカット">
+          <a class="cat-chip" href="#acc-vision"><span class="chip-dot chip-vision"></span>ビジョン</a>
+          <a class="cat-chip" href="#acc-react"><span class="chip-dot chip-react"></span>反応</a>
+          <a class="cat-chip" href="#acc-dribble"><span class="chip-dot chip-dribble"></span>ドリブル</a>
+          <a class="cat-chip" href="#acc-personal"><span class="chip-dot chip-personal"></span>パーソナル</a>
+          <a class="cat-chip" href="#acc-group"><span class="chip-dot chip-group"></span>グループ</a>
+          <a class="cat-chip" href="#acc-measure"><span class="chip-dot chip-measure"></span>計測</a>
+        </nav>
+
+        <details class="acc" id="acc-vision" open>
           <summary class="acc-sum">
-            <span class="acc-name">ビジョン</span>
-            <span class="acc-hint">見る・追う・覚える</span>
+            <span class="acc-rail rail-vision" aria-hidden="true"></span>
+            <span class="acc-copy">
+              <span class="acc-name">ビジョン</span>
+              <span class="acc-hint">見る・追う・覚える</span>
+            </span>
+            <span class="acc-meta">
+              <span class="acc-count">公開 3</span>
+              <span class="acc-toggle" aria-hidden="true"></span>
+            </span>
           </summary>
-          <nav class="apps" aria-label="ビジョン">
+          <nav class="apps-rail" aria-label="ビジョン">
             <a class="app app-peri" href="https://peritap.rojiura.app">
               <span class="app-kicker">PeriTap</span>
               <span class="app-name">周辺視タップ</span>
@@ -73,12 +93,19 @@
           </nav>
         </details>
 
-        <details class="acc">
+        <details class="acc" id="acc-react">
           <summary class="acc-sum">
-            <span class="acc-name">反応</span>
-            <span class="acc-hint">出てきたものに素早く触る</span>
+            <span class="acc-rail rail-react" aria-hidden="true"></span>
+            <span class="acc-copy">
+              <span class="acc-name">反応</span>
+              <span class="acc-hint">出てきたものに素早く触る</span>
+            </span>
+            <span class="acc-meta">
+              <span class="acc-count">公開 2</span>
+              <span class="acc-toggle" aria-hidden="true"></span>
+            </span>
           </summary>
-          <nav class="apps" aria-label="反応">
+          <nav class="apps-rail" aria-label="反応">
             <a class="app app-tap" href="https://numbertap.rojiura.app">
               <span class="app-kicker">NumberTap</span>
               <span class="app-name">順番タップ</span>
@@ -94,12 +121,19 @@
           </nav>
         </details>
 
-        <details class="acc">
+        <details class="acc" id="acc-dribble">
           <summary class="acc-sum">
-            <span class="acc-name">ドリブル</span>
-            <span class="acc-hint">運ぶ・隠す・逃す</span>
+            <span class="acc-rail rail-dribble" aria-hidden="true"></span>
+            <span class="acc-copy">
+              <span class="acc-name">ドリブル</span>
+              <span class="acc-hint">運ぶ・隠す・逃す</span>
+            </span>
+            <span class="acc-meta">
+              <span class="acc-count">公開 3 · 予定 1</span>
+              <span class="acc-toggle" aria-hidden="true"></span>
+            </span>
           </summary>
-          <nav class="apps" aria-label="ドリブル">
+          <nav class="apps-rail" aria-label="ドリブル">
             <a class="app app-keep" href="https://dribblekeep.rojiura.app">
               <span class="app-kicker">Keep</span>
               <span class="app-name">ドリブルキープ</span>
@@ -127,12 +161,19 @@
           </nav>
         </details>
 
-        <details class="acc">
+        <details class="acc" id="acc-personal">
           <summary class="acc-sum">
-            <span class="acc-name">パーソナル</span>
-            <span class="acc-hint">主に個人。使い方次第でグループにも</span>
+            <span class="acc-rail rail-personal" aria-hidden="true"></span>
+            <span class="acc-copy">
+              <span class="acc-name">パーソナル</span>
+              <span class="acc-hint">主に個人。使い方次第でグループにも</span>
+            </span>
+            <span class="acc-meta">
+              <span class="acc-count">公開 1</span>
+              <span class="acc-toggle" aria-hidden="true"></span>
+            </span>
           </summary>
-          <nav class="apps" aria-label="パーソナル">
+          <nav class="apps-rail" aria-label="パーソナル">
             <a class="app app-scan" href="https://fieldscan.rojiura.app">
               <span class="app-kicker">FieldScan</span>
               <span class="app-name">首振りスキャン</span>
@@ -142,12 +183,19 @@
           </nav>
         </details>
 
-        <details class="acc">
+        <details class="acc" id="acc-group">
           <summary class="acc-sum">
-            <span class="acc-name">グループ</span>
-            <span class="acc-hint">複数人での判断・パス</span>
+            <span class="acc-rail rail-group" aria-hidden="true"></span>
+            <span class="acc-copy">
+              <span class="acc-name">グループ</span>
+              <span class="acc-hint">複数人での判断・パス</span>
+            </span>
+            <span class="acc-meta">
+              <span class="acc-count">公開 1 · 予定 2</span>
+              <span class="acc-toggle" aria-hidden="true"></span>
+            </span>
           </summary>
-          <nav class="apps" aria-label="グループ">
+          <nav class="apps-rail" aria-label="グループ">
             <a class="app app-goal" href="https://randomgoal.rojiura.app">
               <span class="app-kicker">Random Goal</span>
               <span class="app-name">ランダムゴール</span>
@@ -169,12 +217,19 @@
           </nav>
         </details>
 
-        <details class="acc">
+        <details class="acc" id="acc-measure">
           <summary class="acc-sum">
-            <span class="acc-name">計測</span>
-            <span class="acc-hint">音で同期し、通過・映像でタイムや速度を取る</span>
+            <span class="acc-rail rail-measure" aria-hidden="true"></span>
+            <span class="acc-copy">
+              <span class="acc-name">計測</span>
+              <span class="acc-hint">音で同期し、通過・映像でタイムや速度を取る</span>
+            </span>
+            <span class="acc-meta">
+              <span class="acc-count">予定 5</span>
+              <span class="acc-toggle" aria-hidden="true"></span>
+            </span>
           </summary>
-          <nav class="apps" aria-label="計測">
+          <nav class="apps-rail" aria-label="計測">
             <div class="app app-sprint app-planned" aria-disabled="true">
               <span class="app-kicker">Sprint</span>
               <span class="app-name">スプリント計測</span>
@@ -209,5 +264,18 @@
         </details>
       </div>
     </main>
+    <script>
+      (function () {
+        var chips = document.querySelectorAll(".cat-chip");
+        chips.forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            var id = chip.getAttribute("href");
+            if (!id || id.charAt(0) !== "#") return;
+            var panel = document.querySelector(id);
+            if (panel && panel.tagName === "DETAILS") panel.open = true;
+          });
+        });
+      })();
+    </script>
   </body>
 </html>
