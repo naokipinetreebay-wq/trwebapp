@@ -1,78 +1,90 @@
 # TRwebapp 構成メモ
 
-2026-10-22 時点。グラウンドで使う同期トレーニングを、広告なし・課金なしで置いている。ポータルは https://tr.rojiura.app 。
+2026-11-07 時点。グラウンドで使う同期トレーニングを、広告なし・課金なしで置いている。ポータルは https://tr.rojiura.app 。
 
 ## リポジトリと公開先
 
 ローカルの親ディレクトリは `/Users/pinetreebay/development/`。GitHub の所有者は `naokipinetreebay-wq`。
 
-| アプリ | ローカル | リポジトリ | 公開 URL | 中身 |
-|---|---|---|---|---|
-| ポータル | `trwebapp` | `trwebapp` | https://tr.rojiura.app | Cloudflare Pages `trwebapp` |
-| FieldScan 首振りスキャン | `fieldscanTR` | `fieldscanTR` | https://fieldscan.rojiura.app | Render `fieldscan-tr` (`srv-dbbcsmrbc2fs73anqj40`) |
-| Random Goal ランダムゴール | `randomgoalgameTR` | `randomgoalgameTR` | https://randomgoal.rojiura.app | Render `randomgoal-tr` (`srv-dbbcsoff3r2c738e42eg`) |
-| NumberTap 順番タップ | `numbertapTR` | `numbertapTR` | https://numbertap.rojiura.app | Render `numbertap-tr` (`srv-dbc5nv3rjlhs73auf7ug`) |
-| Shuttle Touch シャトルタッチ | `shuttletouchTR` | `shuttletouchTR` | https://shuttletouch.rojiura.app | Render `shuttletouch-tr` (`srv-dbcdicoae00c739doei0`) |
-| PeriTap 周辺視タップ | `peritapTR` | `peritapTR` | https://peritap.rojiura.app | Render `peritap-tr`。Worker `peritap-proxy` が中継 |
-| Saccade サッケード | `saccadeTR` | `saccadeTR` | https://saccade.rojiura.app | Render `saccade-tr`。Worker `saccade-proxy` が中継 |
-| FlashMem 瞬間視 | `flashmemTR` | `flashmemTR` | https://flashmem.rojiura.app | Render `flashmem-tr`。Worker `flashmem-proxy` が中継 |
-| Keep ドリブルキープ | `dribblekeepTR` | `dribblekeepTR` | https://dribblekeep.rojiura.app | Render `dribblekeep-tr`。Worker `dribblekeep-proxy` が中継 |
-| Escape エスケープ | `escapeTR` | `escapeTR` | https://escape.rojiura.app | Render `escape-tr`。Worker `escape-proxy` が中継 |
-| Drive ドライブ | `driveTR` | `driveTR` | https://drive.rojiura.app | Render `drive-tr`。Worker `drive-proxy` が中継 |
+本番の入口はすべて Cloudflare。UI は Pages、ルーム／WS は Worker + Durable Objects。
 
-Render のホスト名は `https://<サービス名>.onrender.com`。リージョンはシンガポール、プランは free、ランタイムは Node。
+| アプリ | ローカル | 公開 URL | 中身 |
+|---|---|---|---|
+| ポータル＋各 UI | `trwebapp` | https://tr.rojiura.app | Cloudflare Pages `trwebapp`（各アプリはパス配下） |
+| API／ルーム | `trwebapp/api` | https://tr-api.rojiura.app | Worker + Durable Objects |
+| FieldScan | `fieldscanTR` | https://tr.rojiura.app/fieldscan/ | static export → Pages |
+| Random Goal | `randomgoalgameTR` | https://tr.rojiura.app/randomgoal/ | 同上 |
+| NumberTap | `numbertapTR` | https://tr.rojiura.app/numbertap/ | 同上 |
+| Shuttle Touch | `shuttletouchTR` | https://tr.rojiura.app/shuttletouch/ | 同上 |
+| PeriTap | `peritapTR` | https://tr.rojiura.app/peritap/ | 同上 |
+| Saccade | `saccadeTR` | https://tr.rojiura.app/saccade/ | 同上 |
+| FlashMem | `flashmemTR` | https://tr.rojiura.app/flashmem/ | 同上 |
+| Keep | `dribblekeepTR` | https://tr.rojiura.app/keep/ | 同上 |
+| Escape | `escapeTR` | https://tr.rojiura.app/escape/ | 同上 |
+| Drive | `driveTR` | https://tr.rojiura.app/drive/ | 同上 |
+
+部屋 URL 例: `/keep/r/?code=ABCDEF`（表示は `/keep/d/?code=ABCDEF`）。
+
+旧サブドメイン（`fieldscan.rojiura.app` など）は新パスへ 301 する。大半は各アプリの `proxy/` Worker（カスタムドメイン）。FieldScan / Random Goal は DNS が Render 向きのままなので、Render 上の薄い redirect サーバが 301 する（DNS を Worker カスタムドメインへ付け替えれば Render 側は不要）。
 
 ## 共通の形
 
 トレーニングアプリは同じ殻を持っている。
 
 - Next.js 15（App Router）と React 19。画面はクライアントコンポーネント。
-- カスタム `server.ts` が HTTP と WebSocket を同じプロセスで受ける。Next の `hostname` は `localhost`、待受は `0.0.0.0` と `PORT`。
-- ルームはプロセスメモリだけ。データベースはない。再起動やスリープからの起動でルームは消える。
-- 参加は QR。コントローラは `/r/[code]`、表示端末は `/d/[code]`。
-- ルーム作成は `POST /api/rooms`。存在確認は `GET /api/rooms/exists?code=`。
-- WebSocket は `/ws?room=&role=&deviceId=`。`role` は `controller` か `display`。
+- 本番 UI は `output: "export"`＋`basePath`。ローカル開発は各リポジトリの `server.ts`（HTTP + 任意のローカル WS）。
+- 本番のルームは `tr-api` の Durable Object。作成は `POST https://tr-api.rojiura.app/v1/rooms`（body に `app`）。存在確認は `GET /v1/rooms/:code?app=`。
+- 参加は QR。コントローラは `/r/?code=`、表示端末は `/d/?code=`（Pages の静的パス）。
+- WebSocket は `wss://tr-api.rojiura.app/ws?room=&role=&deviceId=&app=`。`role` は `controller` か `display`。
 - 端末 ID はブラウザの `localStorage`。キーの接頭辞は FieldScan `fs-device-`、NumberTap `nt-device-`、Shuttle Touch `st-device-`、PeriTap `pt-device-`、Saccade `sc-device-`、FlashMem `fm-device-`、Keep `dk-device-`、Escape `es-device-`、Drive `dv-device-`。Random Goal もアプリ内の同様のキー。
-- メッセージは JSON。サーバは `snapshot` を全員に配る。クライアントは `ping`（12秒）、サーバは WebSocket の ping（15秒）で死んだ接続を切る。再接続は 0.6秒から最大8秒のバックオフ。表示の再開はサーバ時刻に合わせ、ラウンドを最初からやり直さない。
+- メッセージは JSON。サーバは `snapshot` を全員に配る。クライアントは `ping`（12秒）。再接続は 0.6秒から最大8秒のバックオフ。表示の再開はサーバ時刻に合わせ、ラウンドを最初からやり直さない。
 - ルームコードは6文字。紛らわしい文字を除いた `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`。
 - 表示端末は最大12台。放置ルームの TTL は90分。実行中、またはコントローラか表示が1台でも繋がっていれば消さない。
 - ウィザードの「はじめる」は、コントローラを表示端末にもするときは、その端末がルームに入ってから `start` を送る。
 - 各アプリの末尾に「トレーニングを終了」（確認して停止し https://tr.rojiura.app へ）と「ポータル（tr）へ」。
-- 依存の TypeScript と `@types/*` は `dependencies` に置く。Render の production インストールは `devDependencies` を入れない。`engines.node` は `>=20`。`start` は `NODE_ENV=production tsx server.ts`。
 
 表示の時計は `serverNow` が変わったときだけ端末とのずれを取り直す。毎フレームずれを計算すると、ずれが固定されて経過時間が進まなくなる。
 
-## デプロイとドメイン
+## デプロイ
 
-トレーニングアプリの `render.yaml` は共通。
-
-```yaml
-services:
-  - type: web
-    runtime: node
-    plan: free
-    region: singapore
-    buildCommand: npm install && npm run build
-    startCommand: npm start
-    healthCheckPath: /
-```
-
-`main` へ push すると自動デプロイする。自動が追いつかないときは `render deploys create <serviceId> --commit <sha> --confirm --wait`。ビルド成否は `npm run build` の終了コードで見る。出力を `tail` にパイプすると失敗でも成功に見える。
-
-ポータルは静的サイト。
+UI（Pages）:
 
 ```bash
-npx wrangler pages deploy . --project-name trwebapp --branch main
+# 各アプリを static export → trwebapp 配下へ
+node scripts/build-apps.mjs
+
+STAGE=$(mktemp -d)
+cp index.html styles.css _redirects "$STAGE/"
+for d in keep escape drive fieldscan randomgoal peritap saccade flashmem numbertap shuttletouch; do
+  cp -R "$d" "$STAGE/"
+done
+npx wrangler pages deploy "$STAGE" --project-name trwebapp --branch main
+rm -rf "$STAGE"
 ```
 
-## Cloudflare 小さい器（進行中）
+API（ルーム DO）:
+
+```bash
+cd api && npx wrangler deploy
+```
+
+旧ホストの 301（カスタムドメイン Worker）:
+
+```bash
+cd ../dribblekeepTR/proxy && npx wrangler deploy   # 他アプリの proxy/ も同様
+```
+
+Render 上の旧サービスは本番では使わない。ダッシュボードから停止・削除してよい（FieldScan / Random Goal の redirect 用だけ、DNS 付け替えまでは残す）。
+
+## Cloudflare 小さい器
 
 方針: プレーはローカル。部屋作成時だけオンライン。アカウントは GameChop と共通（`manage@back-road-service.com`）。
 
 | 名前 | 種類 | 役割 |
 |---|---|---|
-| `trwebapp` | Pages | ポータル（既存） |
-| `tr-api` | Worker + Durable Objects | 広告 bootstrap／統計、および Keep ルーム WS（`api/`）。本番 https://tr-api.rojiura.app |
+| `trwebapp` | Pages | ポータル＋全トレーニング UI |
+| `tr-api` | Worker + Durable Objects | 広告 bootstrap／統計、および全アプリのルーム WS（`api/`）。本番 https://tr-api.rojiura.app |
+| `*-proxy` | Worker | 旧 `*.rojiura.app` → `tr.rojiura.app/<path>/` の 301 |
 | `tr-packages` | R2 | 実行パッケージ（作成予定） |
 | `tr-ads` | R2 | 広告素材（作成予定） |
 | `tr-stats` | D1 | 利用統計（作成予定） |
@@ -84,20 +96,11 @@ DNS は Cloudflare のゾーン `rojiura.app`。
 | 名前 | 向き先 |
 |---|---|
 | `tr` | `trwebapp.pages.dev`（プロキシ済み） |
-| `fieldscan` | Render にカスタムドメイン登録済み。CNAME は `fieldscan-tr.onrender.com` |
-| `randomgoal` | Render にカスタムドメイン登録済み。CNAME は `randomgoal-tr.onrender.com` |
-| `numbertap` | Worker `numbertap-proxy` が `numbertap-tr.onrender.com` へ中継 |
-| `shuttletouch` | Worker `shuttletouch-proxy` が `shuttletouch-tr.onrender.com` へ中継 |
-| `peritap` | Worker `peritap-proxy` が `peritap-tr.onrender.com` へ中継 |
-| `saccade` | Worker `saccade-proxy` が `saccade-tr.onrender.com` へ中継 |
-| `flashmem` | Worker `flashmem-proxy` が `flashmem-tr.onrender.com` へ中継 |
-| `dribblekeep` | Worker `dribblekeep-proxy` が `dribblekeep-tr.onrender.com` へ中継 |
-| `escape` | Worker `escape-proxy` が `escape-tr.onrender.com` へ中継 |
-| `drive` | Worker `drive-proxy` が `drive-tr.onrender.com` へ中継 |
+| `tr-api` | Worker `tr-api` |
+| `dribblekeep` / `escape` / `drive` / `peritap` / `saccade` / `flashmem` / `numbertap` / `shuttletouch` | 各 `*-proxy` Worker（カスタムドメイン → Pages パスへ 301） |
+| `fieldscan` / `randomgoal` | 当面 CNAME → Render（redirect サーバ）。Worker カスタムドメインへ付け替え可能 |
 
-Hobby プランに含まれるカスタムドメインは2件。3件目からは支払い方法が要り、1件あたり月 $0.25。カードは追加していない。FieldScan と Random Goal が Render 側の2件を使っている。NumberTap と Shuttle Touch は Cloudflare Worker がホスト名を受け、`Host` を `*.onrender.com` に変えて転送する。WebSocket もこの転送で通る。Worker のカスタムドメインを付けると、オレンジ雲の DNS レコードは Cloudflare が作る。
-
-無料インスタンスは使っていない間スリープし、次のアクセスで起動に数十秒かかることがある。無料の実行時間はワークスペース全体で月750時間。動いている間だけ消費する。6〜7個程度なら、この無料枠のまま Render に残す判断にした。
+旧ホストのパス変換: `/r/CODE` → `/<app>/r/?code=CODE`（`/d/` も同様）。
 
 ## 画面の色
 
@@ -244,4 +247,4 @@ FieldScan と Random Goal の切替音は、初期状態オフの電子音「ぴ
 
 ## 再開するとき
 
-アプリを増やすときは、NumberTap か Shuttle Touch の `server.ts`、`src/server/room.ts`、`src/app/r/[code]`、`src/app/d/[code]` を複製する。ドメインは Render に足さず、`proxy/` の Worker で `名前.rojiura.app` を `名前-tr.onrender.com` へ中継し、ポータルの `index.html` と `styles.css` にカードを足して Pages をデプロイする。
+アプリを増やすときは、既存アプリの static export（`basePath`）と `tr-api` の DO ルームを複製する。UI は `trwebapp` 配下のパスに載せて Pages デプロイ。旧ホストが要るなら `proxy/` の 301 Worker を足す。ポータルの `index.html` と `styles.css` にカードを足す。
