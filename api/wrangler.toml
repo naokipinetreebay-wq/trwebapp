@@ -1,0 +1,22 @@
+name = "tr-api"
+main = "src/index.js"
+compatibility_date = "2026-11-07"
+workers_dev = true
+
+# ネストした api.tr は証明書が遅延しやすいので、1段のサブドメインにする
+[[routes]]
+pattern = "tr-api.rojiura.app"
+custom_domain = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tr-stats"
+database_id = "e8f722b8-61ac-4bd3-bc84-5d9a5fa02e9a"
+
+[[r2_buckets]]
+binding = "PACKAGES"
+bucket_name = "tr-packages"
+
+[[r2_buckets]]
+binding = "ADS"
+bucket_name = "tr-ads"

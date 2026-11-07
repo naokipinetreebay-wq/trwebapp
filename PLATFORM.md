@@ -65,6 +65,20 @@ services:
 npx wrangler pages deploy . --project-name trwebapp --branch main
 ```
 
+## Cloudflare 小さい器（進行中）
+
+方針: プレーはローカル。部屋作成時だけオンライン。アカウントは GameChop と共通（`manage@back-road-service.com`）。
+
+| 名前 | 種類 | 役割 |
+|---|---|---|
+| `trwebapp` | Pages | ポータル（既存） |
+| `tr-api` | Worker | 部屋作成時の広告判定・統計・パッケージ情報（`api/`）。本番 https://tr-api.rojiura.app |
+| `tr-packages` | R2 | 実行パッケージ（作成予定） |
+| `tr-ads` | R2 | 広告素材（作成予定） |
+| `tr-stats` | D1 | 利用統計（作成予定） |
+
+GameChop の `gamechop-releases` やサイト Worker とは名前を分けて同居させない。
+
 DNS は Cloudflare のゾーン `rojiura.app`。
 
 | 名前 | 向き先 |

@@ -1,0 +1,16 @@
+{
+  "name": "tr-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create tr-stats",
+    "r2:packages": "wrangler r2 bucket create tr-packages",
+    "r2:ads": "wrangler r2 bucket create tr-ads"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
+  }
+}

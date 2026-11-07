@@ -4,6 +4,7 @@
 
 - Cloudflare Pages: https://trwebapp.pages.dev  
 - 本番: https://tr.rojiura.app （DNS 設定後）
+- ブートストラップ API（部屋作成時のみ）: [`api/`](./api/)（Worker `tr-api`）
 
 | アプリ | URL |
 |--------|-----|
