@@ -1,15 +1,30 @@
 /**
  * TRwebapp API（Cloudflare Worker）
  * - bootstrap / stats
- * - ルーム Durable Objects（Keep / Escape / Drive）
+ * - 全作成済みアプリのルーム Durable Objects
  */
 
 import { DriveRoom } from "./driveRoom.js";
 import { FieldScanRoom } from "./fieldscanRoom.js";
+import { FlashMemRoom } from "./flashmemRoom.js";
 import { GoalRoom } from "./goalRoom.js";
 import { KeepRoom, LONE_APPS, randomRoomCode } from "./keepRoom.js";
+import { NumberTapRoom } from "./numbertapRoom.js";
+import { PeriRoom } from "./periRoom.js";
+import { SaccadeRoom } from "./saccadeRoom.js";
+import { ShuttleRoom } from "./shuttleRoom.js";
 
-export { KeepRoom, DriveRoom, FieldScanRoom, GoalRoom };
+export {
+  KeepRoom,
+  DriveRoom,
+  FieldScanRoom,
+  GoalRoom,
+  PeriRoom,
+  SaccadeRoom,
+  FlashMemRoom,
+  NumberTapRoom,
+  ShuttleRoom,
+};
 
 const HOUR_MS = 60 * 60 * 1000;
 const CORS = {
@@ -18,7 +33,30 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-const ROOM_APPS = new Set([...LONE_APPS, "drive", "fieldscan", "randomgoal"]);
+const ROOM_APPS = new Set([
+  ...LONE_APPS,
+  "drive",
+  "fieldscan",
+  "randomgoal",
+  "peritap",
+  "saccade",
+  "flashmem",
+  "numbertap",
+  "shuttletouch",
+]);
+
+const DO_BINDING = {
+  dribblekeep: "KEEP_ROOM",
+  escape: "KEEP_ROOM",
+  drive: "DRIVE_ROOM",
+  fieldscan: "FIELDSCAN_ROOM",
+  randomgoal: "GOAL_ROOM",
+  peritap: "PERI_ROOM",
+  saccade: "SACCADE_ROOM",
+  flashmem: "FLASHMEM_ROOM",
+  numbertap: "NUMBERTAP_ROOM",
+  shuttletouch: "SHUTTLE_ROOM",
+};
 
 export default {
   async fetch(request, env) {
@@ -59,23 +97,10 @@ export default {
 };
 
 function roomStub(env, app, code) {
-  if (app === "drive") {
-    const id = env.DRIVE_ROOM.idFromName(`${app}:${code}`);
-    return env.DRIVE_ROOM.get(id);
-  }
-  if (app === "fieldscan") {
-    const id = env.FIELDSCAN_ROOM.idFromName(`${app}:${code}`);
-    return env.FIELDSCAN_ROOM.get(id);
-  }
-  if (app === "randomgoal") {
-    const id = env.GOAL_ROOM.idFromName(`${app}:${code}`);
-    return env.GOAL_ROOM.get(id);
-  }
-  if (LONE_APPS.includes(app)) {
-    const id = env.KEEP_ROOM.idFromName(`${app}:${code}`);
-    return env.KEEP_ROOM.get(id);
-  }
-  return null;
+  const binding = DO_BINDING[app];
+  if (!binding || !env[binding]) return null;
+  const id = env[binding].idFromName(`${app}:${code}`);
+  return env[binding].get(id);
 }
 
 async function handleCreateRoom(request, env) {

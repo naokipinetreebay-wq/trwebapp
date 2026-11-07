@@ -37,6 +37,26 @@ class_name = "FieldScanRoom"
 name = "GOAL_ROOM"
 class_name = "GoalRoom"
 
+[[durable_objects.bindings]]
+name = "PERI_ROOM"
+class_name = "PeriRoom"
+
+[[durable_objects.bindings]]
+name = "SACCADE_ROOM"
+class_name = "SaccadeRoom"
+
+[[durable_objects.bindings]]
+name = "FLASHMEM_ROOM"
+class_name = "FlashMemRoom"
+
+[[durable_objects.bindings]]
+name = "NUMBERTAP_ROOM"
+class_name = "NumberTapRoom"
+
+[[durable_objects.bindings]]
+name = "SHUTTLE_ROOM"
+class_name = "ShuttleRoom"
+
 [[migrations]]
 tag = "v1-keep-room"
 new_sqlite_classes = ["KeepRoom"]
@@ -48,3 +68,7 @@ new_sqlite_classes = ["DriveRoom"]
 [[migrations]]
 tag = "v3-scan-goal"
 new_sqlite_classes = ["FieldScanRoom", "GoalRoom"]
+
+[[migrations]]
+tag = "v4-vision-react"
+new_sqlite_classes = ["PeriRoom", "SaccadeRoom", "FlashMemRoom", "NumberTapRoom", "ShuttleRoom"]
