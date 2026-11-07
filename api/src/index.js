@@ -241,7 +241,8 @@ async function handleAds(request, env, url) {
     return json({ error: "ads_unavailable" }, 503);
   }
 
-  const object = await env.ADS.get(key, { range: request.headers });
+  const rangeHeader = request.headers.get("Range");
+  const object = await env.ADS.get(key, rangeHeader ? { range: request.headers } : undefined);
   if (!object) {
     return new Response("Not found", { status: 404, headers: CORS });
   }
@@ -258,7 +259,23 @@ async function handleAds(request, env, url) {
     else headers.set("Content-Type", "application/octet-stream");
   }
 
-  const status = object.range != null ? 206 : 200;
+  // <video> は Content-Length が必要。クライアントが Range を付けたときだけ 206 にする
+  const total = object.size;
+  const ranged =
+    Boolean(rangeHeader) &&
+    object.range &&
+    !(object.range.offset === 0 && object.range.length === total);
+  if (ranged) {
+    const { offset, length } = object.range;
+    const end = offset + length - 1;
+    headers.set("Content-Range", `bytes ${offset}-${end}/${total}`);
+    headers.set("Content-Length", String(length));
+  } else if (total != null) {
+    headers.delete("Content-Range");
+    headers.set("Content-Length", String(total));
+  }
+
+  const status = ranged ? 206 : 200;
   if (request.method === "HEAD") {
     return new Response(null, { status, headers });
   }
