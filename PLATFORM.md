@@ -72,7 +72,7 @@ npx wrangler pages deploy . --project-name trwebapp --branch main
 | 名前 | 種類 | 役割 |
 |---|---|---|
 | `trwebapp` | Pages | ポータル（既存） |
-| `tr-api` | Worker | 部屋作成時の広告判定・統計・パッケージ情報（`api/`）。本番 https://tr-api.rojiura.app |
+| `tr-api` | Worker + Durable Objects | 広告 bootstrap／統計、および Keep ルーム WS（`api/`）。本番 https://tr-api.rojiura.app |
 | `tr-packages` | R2 | 実行パッケージ（作成予定） |
 | `tr-ads` | R2 | 広告素材（作成予定） |
 | `tr-stats` | D1 | 利用統計（作成予定） |
