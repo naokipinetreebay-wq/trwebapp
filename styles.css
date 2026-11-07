@@ -14,6 +14,14 @@
   --keep: #34d399;
   --escape: #f97316;
   --drive: #818cf8;
+  --dual: #a3e635;
+  --call: #fbbf24;
+  --free: #2dd4bf;
+  --sprint: #eab308;
+  --kick: #f43f5e;
+  --agility: #22d3ee;
+  --side: #a78bfa;
+  --jump: #fb923c;
   --ink-dark: #04160f;
   --font-display: "Archivo Black", "Hiragino Sans", sans-serif;
   --font-body: "Figtree", "Hiragino Sans", sans-serif;
@@ -105,10 +113,28 @@ body {
   animation: rise 0.7s ease 0.08s both;
 }
 
+.catalog {
+  display: grid;
+  gap: clamp(2rem, 5vw, 3rem);
+  animation: rise 0.7s ease 0.16s both;
+}
+
+.cat-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  letter-spacing: -0.02em;
+}
+
+.cat-lede {
+  margin: 0.35rem 0 1rem;
+  color: var(--mist);
+  font-size: 0.95rem;
+}
+
 .apps {
   display: grid;
   gap: 1rem;
-  animation: rise 0.7s ease 0.16s both;
 }
 
 @media (min-width: 760px) {
@@ -184,12 +210,56 @@ body {
   background: var(--drive);
 }
 
+.app-dual::before {
+  background: var(--dual);
+}
+
+.app-call::before {
+  background: var(--call);
+}
+
+.app-free::before {
+  background: var(--free);
+}
+
+.app-sprint::before {
+  background: var(--sprint);
+}
+
+.app-kick::before {
+  background: var(--kick);
+}
+
+.app-agility::before {
+  background: var(--agility);
+}
+
+.app-side::before {
+  background: var(--side);
+}
+
+.app-jump::before {
+  background: var(--jump);
+}
+
 .app:hover,
 .app:focus-visible {
   transform: translateY(-3px);
   border-color: rgba(232, 241, 234, 0.4);
   background: rgba(4, 22, 15, 0.7);
   outline: none;
+}
+
+.app-planned {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.app-planned:hover,
+.app-planned:focus-visible {
+  transform: none;
+  border-color: var(--line);
+  background: rgba(4, 22, 15, 0.45);
 }
 
 .app-kicker {
@@ -259,6 +329,42 @@ body {
   color: var(--drive);
 }
 
+.app-dual .app-cta {
+  color: var(--dual);
+}
+
+.app-call .app-cta {
+  color: var(--call);
+}
+
+.app-free .app-cta {
+  color: var(--free);
+}
+
+.app-sprint .app-cta {
+  color: var(--sprint);
+}
+
+.app-kick .app-cta {
+  color: var(--kick);
+}
+
+.app-agility .app-cta {
+  color: var(--agility);
+}
+
+.app-side .app-cta {
+  color: var(--side);
+}
+
+.app-jump .app-cta {
+  color: var(--jump);
+}
+
+.app-planned .app-cta {
+  opacity: 0.95;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -273,6 +379,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .brand-block,
   .lede,
+  .catalog,
   .apps,
   .app {
     animation: none;

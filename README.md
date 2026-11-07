@@ -6,18 +6,19 @@
 - 本番: https://tr.rojiura.app （DNS 設定後）
 - ブートストラップ API（部屋作成時のみ）: [`api/`](./api/)（Worker `tr-api`）
 
-| アプリ | URL |
-|--------|-----|
-| 首振り | https://fieldscan.rojiura.app |
-| ゴール | https://randomgoal.rojiura.app |
-| 順番タップ | https://numbertap.rojiura.app |
-| シャトルタッチ | https://shuttletouch.rojiura.app |
-| 周辺視タップ | https://peritap.rojiura.app |
-| サッケード | https://saccade.rojiura.app |
-| 瞬間視 | https://flashmem.rojiura.app |
-| ドリブルキープ | https://dribblekeep.rojiura.app |
-| エスケープ | https://escape.rojiura.app |
-| ドライブ | https://drive.rojiura.app |
+| 区分 | アプリ | URL |
+|------|--------|-----|
+| ビジョン | 周辺視タップ | https://peritap.rojiura.app |
+| ビジョン | サッケード | https://saccade.rojiura.app |
+| ビジョン | 瞬間視 | https://flashmem.rojiura.app |
+| 反応 | 順番タップ | https://numbertap.rojiura.app |
+| 反応 | シャトルタッチ | https://shuttletouch.rojiura.app |
+| ドリブル | キープ / エスケープ / ドライブ | 各 `*.rojiura.app` |
+| ドリブル | デュアルタスク | 開発予定 |
+| パーソナル | 首振りスキャン | https://fieldscan.rojiura.app |
+| グループ | ランダムゴール | https://randomgoal.rojiura.app |
+| グループ | パス&コール / フリーマンパス | 開発予定 |
+| 計測 | スプリント / キック速度 / アジリティ / サイドステップ / ジャンプ | 開発予定 |
 
 ## DNS（Cloudflare）
 
