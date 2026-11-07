@@ -16,16 +16,41 @@
   <body>
     <div class="pitch" aria-hidden="true"></div>
     <main class="shell">
-      <header class="brand-block">
-        <p class="mark">rojiura / training</p>
-        <h1 class="brand">TRwebapp</h1>
-        <p class="lede">グラウンドで使う、同期トレーニングアプリ集。</p>
-      </header>
+      <section class="hero">
+        <header class="brand-block">
+          <p class="mark">rojiura / training</p>
+          <h1 class="brand">TRwebapp</h1>
+          <p class="lede">
+            グラウンドで使う、無料の同期トレーニング。スマホを並べて、見る・触る・運ぶ・測る練習をその場で始めます。
+          </p>
+        </header>
 
-      <div class="catalog">
-        <section class="cat" aria-labelledby="cat-vision">
-          <h2 id="cat-vision" class="cat-title">ビジョン</h2>
-          <p class="cat-lede">見る・追う・覚える</p>
+        <article class="room-card">
+          <h2 class="room-title">ルームについて</h2>
+          <p class="room-body">
+            トレーニングは「ルーム」単位で進みます。コントローラ用の端末でルームを作り、ほかの端末はQRやURLで参加します。同じルームに入った端末どうしが、色や数字、合図をそろえて動きます。
+          </p>
+          <ul class="room-points">
+            <li>コントローラ … 設定・開始・真ん中の表示など、部屋の親</li>
+            <li>周囲の端末 … 選手が見る／触る画面。テザリングでも可</li>
+            <li>よく使うアプリはブックマークしておくと便利です</li>
+          </ul>
+        </article>
+
+        <p class="hero-actions">
+          <a class="btn-pick" href="#catalog">トレーニングを選ぶ</a>
+        </p>
+      </section>
+
+      <div class="catalog" id="catalog">
+        <h2 class="catalog-heading">トレーニング一覧</h2>
+        <p class="catalog-lede">区分を開いてアプリを選んでください。「開発予定」はまだ公開していません。</p>
+
+        <details class="acc">
+          <summary class="acc-sum">
+            <span class="acc-name">ビジョン</span>
+            <span class="acc-hint">見る・追う・覚える</span>
+          </summary>
           <nav class="apps" aria-label="ビジョン">
             <a class="app app-peri" href="https://peritap.rojiura.app">
               <span class="app-kicker">PeriTap</span>
@@ -46,11 +71,13 @@
               <span class="app-cta">開く</span>
             </a>
           </nav>
-        </section>
+        </details>
 
-        <section class="cat" aria-labelledby="cat-react">
-          <h2 id="cat-react" class="cat-title">反応</h2>
-          <p class="cat-lede">出てきたものに素早く触る</p>
+        <details class="acc">
+          <summary class="acc-sum">
+            <span class="acc-name">反応</span>
+            <span class="acc-hint">出てきたものに素早く触る</span>
+          </summary>
           <nav class="apps" aria-label="反応">
             <a class="app app-tap" href="https://numbertap.rojiura.app">
               <span class="app-kicker">NumberTap</span>
@@ -65,11 +92,13 @@
               <span class="app-cta">開く</span>
             </a>
           </nav>
-        </section>
+        </details>
 
-        <section class="cat" aria-labelledby="cat-dribble">
-          <h2 id="cat-dribble" class="cat-title">ドリブル</h2>
-          <p class="cat-lede">運ぶ・隠す・逃す</p>
+        <details class="acc">
+          <summary class="acc-sum">
+            <span class="acc-name">ドリブル</span>
+            <span class="acc-hint">運ぶ・隠す・逃す</span>
+          </summary>
           <nav class="apps" aria-label="ドリブル">
             <a class="app app-keep" href="https://dribblekeep.rojiura.app">
               <span class="app-kicker">Keep</span>
@@ -96,11 +125,13 @@
               <span class="app-cta">開発予定</span>
             </div>
           </nav>
-        </section>
+        </details>
 
-        <section class="cat" aria-labelledby="cat-personal">
-          <h2 id="cat-personal" class="cat-title">パーソナル</h2>
-          <p class="cat-lede">主に個人。使い方次第でグループにも</p>
+        <details class="acc">
+          <summary class="acc-sum">
+            <span class="acc-name">パーソナル</span>
+            <span class="acc-hint">主に個人。使い方次第でグループにも</span>
+          </summary>
           <nav class="apps" aria-label="パーソナル">
             <a class="app app-scan" href="https://fieldscan.rojiura.app">
               <span class="app-kicker">FieldScan</span>
@@ -109,11 +140,13 @@
               <span class="app-cta">開く</span>
             </a>
           </nav>
-        </section>
+        </details>
 
-        <section class="cat" aria-labelledby="cat-group">
-          <h2 id="cat-group" class="cat-title">グループ</h2>
-          <p class="cat-lede">複数人での判断・パス</p>
+        <details class="acc">
+          <summary class="acc-sum">
+            <span class="acc-name">グループ</span>
+            <span class="acc-hint">複数人での判断・パス</span>
+          </summary>
           <nav class="apps" aria-label="グループ">
             <a class="app app-goal" href="https://randomgoal.rojiura.app">
               <span class="app-kicker">Random Goal</span>
@@ -134,11 +167,13 @@
               <span class="app-cta">開発予定</span>
             </div>
           </nav>
-        </section>
+        </details>
 
-        <section class="cat" aria-labelledby="cat-measure">
-          <h2 id="cat-measure" class="cat-title">計測</h2>
-          <p class="cat-lede">音で同期し、通過・映像でタイムや速度を取る</p>
+        <details class="acc">
+          <summary class="acc-sum">
+            <span class="acc-name">計測</span>
+            <span class="acc-hint">音で同期し、通過・映像でタイムや速度を取る</span>
+          </summary>
           <nav class="apps" aria-label="計測">
             <div class="app app-sprint app-planned" aria-disabled="true">
               <span class="app-kicker">Sprint</span>
@@ -171,7 +206,7 @@
               <span class="app-cta">開発予定</span>
             </div>
           </nav>
-        </section>
+        </details>
       </div>
     </main>
   </body>

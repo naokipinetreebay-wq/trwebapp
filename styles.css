@@ -75,14 +75,18 @@ body {
   z-index: 1;
   min-height: 100vh;
   display: grid;
-  align-content: center;
-  gap: clamp(2rem, 5vw, 3.5rem);
-  padding: clamp(1.5rem, 4vw, 3rem);
+  align-content: start;
+  gap: clamp(2.5rem, 6vw, 4rem);
+  padding: clamp(1.5rem, 4vw, 3rem) clamp(1.5rem, 4vw, 3rem) 4rem;
   max-width: 980px;
   margin: 0 auto;
 }
 
-.brand-block {
+.hero {
+  min-height: min(92vh, 820px);
+  display: grid;
+  align-content: center;
+  gap: clamp(1.4rem, 3vw, 2rem);
   animation: rise 0.7s ease both;
 }
 
@@ -106,30 +110,142 @@ body {
 
 .lede {
   margin: 1rem 0 0;
-  max-width: 28rem;
+  max-width: 32rem;
   font-size: 1.05rem;
   line-height: 1.55;
   color: var(--mist);
-  animation: rise 0.7s ease 0.08s both;
+}
+
+.room-card {
+  max-width: 36rem;
+  padding: 1.25rem 1.3rem 1.2rem;
+  border: 1px solid var(--line);
+  background: rgba(4, 22, 15, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.room-title {
+  margin: 0 0 0.55rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.room-body {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: var(--mist);
+}
+
+.room-points {
+  margin: 0.9rem 0 0;
+  padding-left: 1.15rem;
+  color: var(--mist);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.room-points li + li {
+  margin-top: 0.35rem;
+}
+
+.hero-actions {
+  margin: 0.25rem 0 0;
+}
+
+.btn-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0.75rem 1.35rem;
+  border: 1px solid rgba(232, 241, 234, 0.35);
+  background: var(--foam);
+  color: var(--ink-dark);
+  font: inherit;
+  font-weight: 800;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.btn-pick:hover,
+.btn-pick:focus-visible {
+  background: #fff;
+  outline: none;
 }
 
 .catalog {
   display: grid;
-  gap: clamp(2rem, 5vw, 3rem);
-  animation: rise 0.7s ease 0.16s both;
+  gap: 0.85rem;
+  scroll-margin-top: 1.25rem;
+  padding-top: 0.5rem;
 }
 
-.cat-title {
+.catalog-heading {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  font-size: clamp(1.8rem, 5vw, 2.4rem);
   letter-spacing: -0.02em;
 }
 
-.cat-lede {
-  margin: 0.35rem 0 1rem;
+.catalog-lede {
+  margin: -0.2rem 0 0.6rem;
   color: var(--mist);
   font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.acc {
+  border: 1px solid var(--line);
+  background: rgba(4, 22, 15, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.acc-sum {
+  display: grid;
+  gap: 0.2rem;
+  padding: 1.05rem 1.2rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.acc-sum::-webkit-details-marker {
+  display: none;
+}
+
+.acc-sum::after {
+  content: "+";
+  position: absolute;
+  right: 1.2rem;
+  top: 1.05rem;
+  font-weight: 800;
+  opacity: 0.7;
+}
+
+.acc {
+  position: relative;
+}
+
+.acc[open] > .acc-sum::after {
+  content: "–";
+}
+
+.acc-name {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  padding-right: 2rem;
+}
+
+.acc-hint {
+  font-size: 0.9rem;
+  color: var(--mist);
+  padding-right: 2rem;
+}
+
+.acc .apps {
+  padding: 0 1rem 1rem;
 }
 
 .apps {
@@ -377,8 +493,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-block,
-  .lede,
+  .hero,
   .catalog,
   .apps,
   .app {
