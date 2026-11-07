@@ -1,43 +1,43 @@
 # TRwebapp ポータル
 
-構成、技術要素、各アプリの仕様は [PLATFORM.md](./PLATFORM.md)。
+本番: https://tr.rojiura.app
 
-- Cloudflare Pages: https://trwebapp.pages.dev  
-- 本番: https://tr.rojiura.app （DNS 設定後）
-- ブートストラップ API（部屋作成時のみ）: [`api/`](./api/)（Worker `tr-api`）
+- ポータル＋各トレーニング UI: Cloudflare Pages（このリポジトリ）
+- 部屋作成・WebSocket: https://tr-api.rojiura.app（Durable Objects）
 
-| 区分 | アプリ | URL |
-|------|--------|-----|
-| ビジョン | 周辺視タップ | https://peritap.rojiura.app |
-| ビジョン | サッケード | https://saccade.rojiura.app |
-| ビジョン | 瞬間視 | https://flashmem.rojiura.app |
-| 反応 | 順番タップ | https://numbertap.rojiura.app |
-| 反応 | シャトルタッチ | https://shuttletouch.rojiura.app |
-| ドリブル | キープ / エスケープ / ドライブ | 各 `*.rojiura.app` |
-| ドリブル | デュアルタスク | 開発予定 |
-| パーソナル | 首振りスキャン | https://fieldscan.rojiura.app |
-| グループ | ランダムゴール | https://randomgoal.rojiura.app |
-| グループ | パス&コール / フリーマンパス | 開発予定 |
-| 計測 | スプリント / キック速度 / アジリティ / サイドステップ / ジャンプ | 開発予定 |
+| パス | アプリ |
+|------|--------|
+| `/peritap/` | 周辺視タップ |
+| `/saccade/` | サッケード |
+| `/flashmem/` | 瞬間視 |
+| `/numbertap/` | 順番タップ |
+| `/shuttletouch/` | シャトルタッチ |
+| `/keep/` | ドリブルキープ |
+| `/escape/` | エスケープ |
+| `/drive/` | ドライブ |
+| `/fieldscan/` | 首振りスキャン |
+| `/randomgoal/` | ランダムゴール |
 
-## DNS（Cloudflare）
+部屋 URL 例: `/keep/r/?code=ABCDEF`（表示は `/keep/d/?code=ABCDEF`）
 
-| タイプ | 名前 | ターゲット | プロキシ |
-|--------|------|------------|----------|
-| CNAME | `tr` | `trwebapp.pages.dev` | オレンジ雲（Proxied）でOK |
-| CNAME | `numbertap` | Worker `numbertap-proxy` が自動作成 | オレンジ雲。中身は `numbertap-tr.onrender.com` |
-| CNAME | `shuttletouch` | Worker `shuttletouch-proxy` が自動作成 | オレンジ雲。中身は `shuttletouch-tr.onrender.com` |
-| CNAME | `peritap` | Worker `peritap-proxy` が自動作成 | オレンジ雲。中身は `peritap-tr.onrender.com` |
-| CNAME | `saccade` | Worker `saccade-proxy` が自動作成 | オレンジ雲。中身は `saccade-tr.onrender.com` |
-| CNAME | `flashmem` | Worker `flashmem-proxy` が自動作成 | オレンジ雲。中身は `flashmem-tr.onrender.com` |
-| CNAME | `dribblekeep` | Worker `dribblekeep-proxy` が自動作成 | オレンジ雲。中身は `dribblekeep-tr.onrender.com` |
-| CNAME | `escape` | Worker `escape-proxy` が自動作成 | オレンジ雲。中身は `escape-tr.onrender.com` |
-| CNAME | `drive` | Worker `drive-proxy` が自動作成 | オレンジ雲。中身は `drive-tr.onrender.com` |
-
-Pages プロジェクト側にも `tr.rojiura.app` カスタムドメインを追加済み。DNS の CNAME があれば有効化されます。
-
-## デプロイ
+## ビルド・デプロイ
 
 ```bash
-npx wrangler pages deploy . --project-name trwebapp --branch main
+# 各アプリを static export → このリポジトリ配下へ
+node scripts/build-apps.mjs
+
+# Pages へ（api/ は含めない）
+STAGE=$(mktemp -d)
+cp index.html styles.css _redirects "$STAGE/"
+for d in keep escape drive fieldscan randomgoal peritap saccade flashmem numbertap shuttletouch; do
+  cp -R "$d" "$STAGE/"
+done
+npx wrangler pages deploy "$STAGE" --project-name trwebapp --branch main
+rm -rf "$STAGE"
+```
+
+API（ルーム DO）は `api/` を参照。
+
+```bash
+cd api && npx wrangler deploy
 ```
