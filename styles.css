@@ -101,18 +101,19 @@ body {
 
 .brand {
   margin: 0;
+  width: 100%;
   display: grid;
   gap: 0.35rem;
   font-family: var(--font-display);
-  font-size: clamp(2.8rem, 11vw, 5.8rem);
+  font-size: clamp(2.8rem, 12vw, 6.2rem);
   line-height: 0.92;
   letter-spacing: -0.03em;
-  text-wrap: balance;
 }
 
 .brand-by {
   display: block;
-  justify-self: end;
+  width: 100%;
+  justify-self: stretch;
   text-align: right;
   font-family: var(--font-body);
   font-size: clamp(0.72rem, 2vw, 0.88rem);
@@ -215,64 +216,6 @@ body {
   line-height: 1.5;
   max-width: 36rem;
 }
-
-.cat-scroll {
-  display: flex;
-  gap: 0.55rem;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
-  padding: 0.15rem 0.1rem 0.55rem;
-  margin: 0 -0.15rem;
-}
-
-.cat-scroll::-webkit-scrollbar {
-  height: 4px;
-}
-
-.cat-scroll::-webkit-scrollbar-thumb {
-  background: rgba(232, 241, 234, 0.25);
-}
-
-.cat-chip {
-  flex: 0 0 auto;
-  scroll-snap-align: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 2.55rem;
-  padding: 0.45rem 0.95rem;
-  border: 1px solid var(--line);
-  background: rgba(4, 22, 15, 0.55);
-  color: var(--foam);
-  text-decoration: none;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.cat-chip:hover,
-.cat-chip:focus-visible {
-  border-color: rgba(232, 241, 234, 0.45);
-  background: rgba(4, 22, 15, 0.8);
-  outline: none;
-}
-
-.chip-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: var(--foam);
-}
-
-.chip-vision { background: var(--peri); }
-.chip-react { background: var(--tap); }
-.chip-dribble { background: var(--keep); }
-.chip-personal { background: var(--scan); }
-.chip-group { background: var(--goal); }
-.chip-measure { background: var(--sprint); }
 
 .acc {
   position: relative;
@@ -439,34 +382,17 @@ body {
 .panel-group { box-shadow: inset 4px 0 0 var(--goal); }
 .panel-measure { box-shadow: inset 4px 0 0 var(--sprint); }
 
-.apps-rail {
-  display: flex;
-  gap: 0.85rem;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
+.apps {
+  display: grid;
+  gap: 1rem;
   padding: 0 1rem 1.15rem;
   margin: 0;
 }
 
-.apps-rail::-webkit-scrollbar {
-  height: 5px;
-}
-
-.apps-rail::-webkit-scrollbar-thumb {
-  background: rgba(232, 241, 234, 0.28);
-}
-
-.apps-rail .app {
-  flex: 0 0 min(78vw, 280px);
-  scroll-snap-align: start;
-  min-height: 11.5rem;
-}
-
 @media (min-width: 760px) {
-  .apps-rail .app {
-    flex-basis: 260px;
+  .apps {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
   }
 }
 

@@ -48,18 +48,9 @@
         <div class="catalog-head">
           <h2 class="catalog-heading">トレーニング一覧</h2>
           <p class="catalog-lede">
-            区分を開くと概要が出ます。アプリカードは横にスクロールできます。「開発予定」はまだ公開していません。
+            区分を開くと概要とアプリが出ます。「開発予定」はまだ公開していません。同時に開く区分は1つです。
           </p>
         </div>
-
-        <nav class="cat-scroll" aria-label="区分ショートカット">
-          <a class="cat-chip" href="#acc-vision"><span class="chip-dot chip-vision"></span>ビジョン</a>
-          <a class="cat-chip" href="#acc-react"><span class="chip-dot chip-react"></span>反応</a>
-          <a class="cat-chip" href="#acc-dribble"><span class="chip-dot chip-dribble"></span>ドリブル</a>
-          <a class="cat-chip" href="#acc-personal"><span class="chip-dot chip-personal"></span>パーソナル</a>
-          <a class="cat-chip" href="#acc-group"><span class="chip-dot chip-group"></span>グループ</a>
-          <a class="cat-chip" href="#acc-measure"><span class="chip-dot chip-measure"></span>計測</a>
-        </nav>
 
         <details class="acc" id="acc-vision" open>
           <summary class="acc-sum">
@@ -86,7 +77,7 @@
                 <li>瞬間視</li>
               </ul>
             </div>
-            <nav class="apps-rail" aria-label="ビジョン">
+            <nav class="apps" aria-label="ビジョン">
               <a class="app app-peri" href="https://peritap.rojiura.app">
                 <span class="app-kicker">PeriTap</span>
                 <span class="app-name">周辺視タップ</span>
@@ -133,7 +124,7 @@
                 <li>シャトルタッチ</li>
               </ul>
             </div>
-            <nav class="apps-rail" aria-label="反応">
+            <nav class="apps" aria-label="反応">
               <a class="app app-tap" href="https://numbertap.rojiura.app">
                 <span class="app-kicker">NumberTap</span>
                 <span class="app-name">順番タップ</span>
@@ -176,7 +167,7 @@
                 <li class="is-planned">デュアルタスク（開発予定）</li>
               </ul>
             </div>
-            <nav class="apps-rail" aria-label="ドリブル">
+            <nav class="apps" aria-label="ドリブル">
               <a class="app app-keep" href="https://dribblekeep.rojiura.app">
                 <span class="app-kicker">Keep</span>
                 <span class="app-name">ドリブルキープ</span>
@@ -228,7 +219,7 @@
                 <li>首振りスキャン</li>
               </ul>
             </div>
-            <nav class="apps-rail" aria-label="パーソナル">
+            <nav class="apps" aria-label="パーソナル">
               <a class="app app-scan" href="https://fieldscan.rojiura.app">
                 <span class="app-kicker">FieldScan</span>
                 <span class="app-name">首振りスキャン</span>
@@ -264,7 +255,7 @@
                 <li class="is-planned">フリーマンパス（開発予定）</li>
               </ul>
             </div>
-            <nav class="apps-rail" aria-label="グループ">
+            <nav class="apps" aria-label="グループ">
               <a class="app app-goal" href="https://randomgoal.rojiura.app">
                 <span class="app-kicker">Random Goal</span>
                 <span class="app-name">ランダムゴール</span>
@@ -314,7 +305,7 @@
                 <li class="is-planned">ジャンプ／滞空</li>
               </ul>
             </div>
-            <nav class="apps-rail" aria-label="計測">
+            <nav class="apps" aria-label="計測">
               <div class="app app-sprint app-planned" aria-disabled="true">
                 <span class="app-kicker">Sprint</span>
                 <span class="app-name">スプリント計測</span>
@@ -352,12 +343,13 @@
     </main>
     <script>
       (function () {
-        document.querySelectorAll(".cat-chip").forEach(function (chip) {
-          chip.addEventListener("click", function () {
-            var id = chip.getAttribute("href");
-            if (!id || id.charAt(0) !== "#") return;
-            var panel = document.querySelector(id);
-            if (panel && panel.tagName === "DETAILS") panel.open = true;
+        var panels = Array.prototype.slice.call(document.querySelectorAll(".catalog details.acc"));
+        panels.forEach(function (panel) {
+          panel.addEventListener("toggle", function () {
+            if (!panel.open) return;
+            panels.forEach(function (other) {
+              if (other !== panel) other.open = false;
+            });
           });
         });
       })();
