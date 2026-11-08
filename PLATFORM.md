@@ -87,7 +87,7 @@ Render 上の旧サービス（全 10 本）は suspend 済み。旧サブドメ
 | `*-proxy` | Worker | 旧 `*.rojiura.app` → `tr.rojiura.app/<path>/` の 301 |
 | `tr-packages` | R2 | 実行パッケージ（作成予定） |
 | `tr-ads` | R2 | 広告素材（作成予定） |
-| `tr-stats` | D1 | 利用統計（作成予定） |
+| `tr-stats` | D1 | 利用統計（devices / events / ad_impressions）。のべ端末・利用層・広告配信実績用 |
 
 GameChop の `gamechop-releases` やサイト Worker とは名前を分けて同居させない。
 

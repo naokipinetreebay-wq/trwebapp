@@ -169,18 +169,23 @@ async function handleBootstrap(request, env) {
   const body = await readJson(request);
   const profile = normalizeProfile(body.profile);
   const client = normalizeClient(body.client);
+  const deviceId = str(body.deviceId, 80);
+  const registeredAt = numberOrNull(body.registeredAt);
   const lastAdAt = numberOrNull(body.lastAdAt);
   const skipDebt = Math.max(0, Math.floor(Number(body.skipDebt) || 0));
   const now = Date.now();
 
-  // 利用状況は広告判定の参考のみ。個人プロフィールは D1 に残さない。
+  // 統計用: のべ端末・利用層。営業・実績レポート向け（個人連絡用途ではない）
+  await upsertDevice(env, { deviceId, registeredAt, profile, at: now });
   await recordEvent(env, {
     type: "bootstrap",
     at: now,
+    deviceId,
+    registeredAt,
+    profile,
     client,
     lastAdAt,
     skipDebt,
-    hasProfile: Boolean(profile),
   });
 
   const ad = decideAd({ now, lastAdAt, skipDebt, profile });
@@ -198,12 +203,35 @@ async function handleBootstrap(request, env) {
 async function handleStats(request, env) {
   const body = await readJson(request);
   const now = Date.now();
+  const profile = normalizeProfile(body.profile);
+  const client = normalizeClient(body.client);
+  const deviceId = str(body.deviceId, 80);
+  const registeredAt = numberOrNull(body.registeredAt);
+  const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
+  const type = str(body.type || "event", 64) || "event";
+
+  await upsertDevice(env, { deviceId, registeredAt, profile, at: now });
   await recordEvent(env, {
-    type: body.type || "event",
+    type,
     at: now,
-    client: normalizeClient(body.client),
-    payload: body.payload && typeof body.payload === "object" ? body.payload : {},
+    deviceId,
+    registeredAt,
+    profile,
+    client,
+    payload,
   });
+
+  if (type === "ad_impression" || type === "ad_skip") {
+    await recordAdImpression(env, {
+      at: now,
+      deviceId,
+      creativeId: str(payload.creativeId, 64),
+      app: client.app || "",
+      skipped: type === "ad_skip" ? 1 : 0,
+      profile,
+    });
+  }
+
   return json({ ok: true, serverNow: now });
 }
 
@@ -283,17 +311,94 @@ async function handleAds(request, env, url) {
   return new Response(object.body, { status, headers });
 }
 
-async function recordEvent(env, event) {
-  if (!env.DB) return;
-  try {
-    await env.DB.prepare(
+async function ensureStatsSchema(env) {
+  if (!env.DB || ensureStatsSchema.ready) return;
+  await env.DB.batch([
+    env.DB.prepare(
       `CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
         at INTEGER NOT NULL,
         json TEXT NOT NULL
       )`
-    ).run();
+    ),
+    env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS devices (
+        device_id TEXT PRIMARY KEY,
+        registered_at INTEGER,
+        first_seen INTEGER NOT NULL,
+        last_seen INTEGER NOT NULL,
+        profile_json TEXT
+      )`
+    ),
+    env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS ad_impressions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at INTEGER NOT NULL,
+        device_id TEXT,
+        creative_id TEXT,
+        app TEXT,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        profile_json TEXT
+      )`
+    ),
+  ]);
+  ensureStatsSchema.ready = true;
+}
+
+async function upsertDevice(env, { deviceId, registeredAt, profile, at }) {
+  if (!env.DB || !deviceId) return;
+  try {
+    await ensureStatsSchema(env);
+    const existing = await env.DB.prepare(
+      `SELECT device_id FROM devices WHERE device_id = ?`
+    )
+      .bind(deviceId)
+      .first();
+    const profileJson = profile ? JSON.stringify(profile) : null;
+    if (existing) {
+      await env.DB.prepare(
+        `UPDATE devices SET last_seen = ?, registered_at = COALESCE(?, registered_at), profile_json = COALESCE(?, profile_json) WHERE device_id = ?`
+      )
+        .bind(at, registeredAt, profileJson, deviceId)
+        .run();
+    } else {
+      await env.DB.prepare(
+        `INSERT INTO devices (device_id, registered_at, first_seen, last_seen, profile_json) VALUES (?, ?, ?, ?, ?)`
+      )
+        .bind(deviceId, registeredAt, at, at, profileJson)
+        .run();
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+async function recordAdImpression(env, row) {
+  if (!env.DB) return;
+  try {
+    await ensureStatsSchema(env);
+    await env.DB.prepare(
+      `INSERT INTO ad_impressions (at, device_id, creative_id, app, skipped, profile_json) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+      .bind(
+        row.at,
+        row.deviceId || null,
+        row.creativeId || null,
+        row.app || null,
+        row.skipped ? 1 : 0,
+        row.profile ? JSON.stringify(row.profile) : null
+      )
+      .run();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function recordEvent(env, event) {
+  if (!env.DB) return;
+  try {
+    await ensureStatsSchema(env);
     await env.DB.prepare(`INSERT INTO events (type, at, json) VALUES (?, ?, ?)`).bind(
       event.type,
       event.at,
