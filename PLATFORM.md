@@ -25,7 +25,7 @@
 
 部屋 URL 例: `/keep/r/?code=ABCDEF`（表示は `/keep/d/?code=ABCDEF`）。
 
-旧サブドメイン（`fieldscan.rojiura.app` など）は新パスへ 301 する。大半は各アプリの `proxy/` Worker（カスタムドメイン）。FieldScan / Random Goal は DNS が Render 向きのままなので、Render 上の薄い redirect サーバが 301 する（DNS を Worker カスタムドメインへ付け替えれば Render 側は不要）。
+旧サブドメイン（`fieldscan.rojiura.app` など）は各アプリの `proxy/` Worker（カスタムドメイン）が新パスへ 301 する。
 
 ## 共通の形
 
@@ -74,7 +74,7 @@ cd api && npx wrangler deploy
 cd ../dribblekeepTR/proxy && npx wrangler deploy   # 他アプリの proxy/ も同様
 ```
 
-Render 上の旧サービスのうち、CF proxy で足りる 8 本（Keep / Escape / Drive / PeriTap / Saccade / FlashMem / NumberTap / Shuttle Touch）は suspend 済み。FieldScan / Random Goal だけ redirect 用に残している（DNS を Worker カスタムドメインへ付け替えればこれも不要）。
+Render 上の旧サービス（全 10 本）は suspend 済み。旧サブドメインは各 `*-proxy` Worker が 301 する。
 
 ## Cloudflare 小さい器
 
@@ -97,8 +97,7 @@ DNS は Cloudflare のゾーン `rojiura.app`。
 |---|---|
 | `tr` | `trwebapp.pages.dev`（プロキシ済み） |
 | `tr-api` | Worker `tr-api` |
-| `dribblekeep` / `escape` / `drive` / `peritap` / `saccade` / `flashmem` / `numbertap` / `shuttletouch` | 各 `*-proxy` Worker（カスタムドメイン → Pages パスへ 301） |
-| `fieldscan` / `randomgoal` | 当面 CNAME → Render（redirect サーバ）。Worker カスタムドメインへ付け替え可能 |
+| `dribblekeep` / `escape` / `drive` / `peritap` / `saccade` / `flashmem` / `numbertap` / `shuttletouch` / `fieldscan` / `randomgoal` | 各 `*-proxy` Worker（カスタムドメイン → Pages パスへ 301） |
 
 旧ホストのパス変換: `/r/CODE` → `/<app>/r/?code=CODE`（`/d/` も同様）。
 
