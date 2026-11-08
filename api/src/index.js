@@ -169,13 +169,21 @@ async function handleBootstrap(request, env) {
   const body = await readJson(request);
   const profile = normalizeProfile(body.profile);
   const client = normalizeClient(body.client);
-  const deviceId = str(body.deviceId, 80);
+  const firstVisit = Boolean(body.firstVisit);
   const lastAdAt = numberOrNull(body.lastAdAt);
   const skipDebt = Math.max(0, Math.floor(Number(body.skipDebt) || 0));
   const now = Date.now();
 
-  // 端末IDのみ保存（のべユニーク）。属性はリクエスト時にカウンタ加算だけ（誰がどの属性かは残さない）
-  await upsertDevice(env, { deviceId, at: now });
+  // 識別子は保存しない。属性は回数カウンタのみ。初回端末リクエストは別カウンタ。
+  if (firstVisit) {
+    await bumpUsageCounters(env, {
+      at: now,
+      kind: "first_visit",
+      app: client.app,
+      profile: null,
+      cross: false,
+    });
+  }
   await bumpUsageCounters(env, { at: now, kind: "use", app: client.app, profile });
 
   const ad = decideAd({ now, lastAdAt, skipDebt, profile });
@@ -195,10 +203,7 @@ async function handleStats(request, env) {
   const now = Date.now();
   const profile = normalizeProfile(body.profile);
   const client = normalizeClient(body.client);
-  const deviceId = str(body.deviceId, 80);
   const type = str(body.type || "event", 64) || "event";
-
-  await upsertDevice(env, { deviceId, at: now });
 
   if (type === "ad_impression" || type === "ad_skip") {
     await bumpUsageCounters(env, {
@@ -290,25 +295,16 @@ async function handleAds(request, env, url) {
 
 async function ensureStatsSchema(env) {
   if (!env.DB || ensureStatsSchema.ready) return;
-  await env.DB.batch([
-    env.DB.prepare(
-      `CREATE TABLE IF NOT EXISTS devices (
-        device_id TEXT PRIMARY KEY,
-        first_seen INTEGER NOT NULL,
-        last_seen INTEGER NOT NULL
-      )`
-    ),
-    env.DB.prepare(
-      `CREATE TABLE IF NOT EXISTS counters (
-        day TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        dim TEXT NOT NULL,
-        value TEXT NOT NULL,
-        count INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (day, kind, dim, value)
-      )`
-    ),
-  ]);
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS counters (
+      day TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      dim TEXT NOT NULL,
+      value TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (day, kind, dim, value)
+    )`
+  ).run();
   ensureStatsSchema.ready = true;
 }
 
@@ -316,31 +312,6 @@ function statsDay(at) {
   // JST の日付で日次集計
   const jst = new Date(at + 9 * 60 * 60 * 1000);
   return jst.toISOString().slice(0, 10);
-}
-
-async function upsertDevice(env, { deviceId, at }) {
-  if (!env.DB || !deviceId) return;
-  try {
-    await ensureStatsSchema(env);
-    const existing = await env.DB.prepare(
-      `SELECT device_id FROM devices WHERE device_id = ?`
-    )
-      .bind(deviceId)
-      .first();
-    if (existing) {
-      await env.DB.prepare(`UPDATE devices SET last_seen = ? WHERE device_id = ?`)
-        .bind(at, deviceId)
-        .run();
-    } else {
-      await env.DB.prepare(
-        `INSERT INTO devices (device_id, first_seen, last_seen) VALUES (?, ?, ?)`
-      )
-        .bind(deviceId, at, at)
-        .run();
-    }
-  } catch {
-    /* ignore */
-  }
 }
 
 async function bumpCounter(env, { day, kind, dim, value, n = 1 }) {
@@ -354,8 +325,11 @@ async function bumpCounter(env, { day, kind, dim, value, n = 1 }) {
     .run();
 }
 
-/** 属性はカウンタ加算のみ。device_id と属性を紐づけて保存しない */
-async function bumpUsageCounters(env, { at, kind, app, profile }) {
+/**
+ * 属性は回数カウンタのみ（個人・端末との紐づけ保存なし）。
+ * クロス: 県×練習者年代 / 利用形態×人数 / 県×利用形態
+ */
+async function bumpUsageCounters(env, { at, kind, app, profile, cross = true }) {
   if (!env.DB) return;
   try {
     await ensureStatsSchema(env);
@@ -372,6 +346,38 @@ async function bumpUsageCounters(env, { at, kind, app, profile }) {
     ]) {
       const value = profile[dim];
       if (value) await bumpCounter(env, { day, kind, dim, value, n: 1 });
+    }
+    if (!cross) return;
+    const pref = profile.prefecture || "";
+    const trainee = profile.traineeAgeBand || "";
+    const usage = profile.usageType || "";
+    const group = profile.groupSizeBand || "";
+    if (pref && trainee) {
+      await bumpCounter(env, {
+        day,
+        kind,
+        dim: "prefecture_x_traineeAge",
+        value: `${pref}|${trainee}`,
+        n: 1,
+      });
+    }
+    if (usage && group) {
+      await bumpCounter(env, {
+        day,
+        kind,
+        dim: "usageType_x_groupSize",
+        value: `${usage}|${group}`,
+        n: 1,
+      });
+    }
+    if (pref && usage) {
+      await bumpCounter(env, {
+        day,
+        kind,
+        dim: "prefecture_x_usageType",
+        value: `${pref}|${usage}`,
+        n: 1,
+      });
     }
   } catch {
     /* ignore */

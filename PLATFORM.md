@@ -87,7 +87,7 @@ Render 上の旧サービス（全 10 本）は suspend 済み。旧サブドメ
 | `*-proxy` | Worker | 旧 `*.rojiura.app` → `tr.rojiura.app/<path>/` の 301 |
 | `tr-packages` | R2 | 実行パッケージ（作成予定） |
 | `tr-ads` | R2 | 広告素材（作成予定） |
-| `tr-stats` | D1 | 利用統計。`devices`（端末IDのみ＝のべユニーク）と `counters`（日次・属性別の回数。個人紐づけなし） |
+| `tr-stats` | D1 | 利用統計は `counters` のみ。個別端末IDは持たない。初回目安＝端末未保存状態のリクエスト件数。属性は単体＋クロス（県×練習者年代／形態×人数／県×形態）の回数 |
 
 GameChop の `gamechop-releases` やサイト Worker とは名前を分けて同居させない。
 
