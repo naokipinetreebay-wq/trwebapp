@@ -173,16 +173,17 @@ async function handleBootstrap(request, env) {
   const skipDebt = Math.max(0, Math.floor(Number(body.skipDebt) || 0));
   const now = Date.now();
 
+  // 利用状況は広告判定の参考のみ。個人プロフィールは D1 に残さない。
   await recordEvent(env, {
     type: "bootstrap",
     at: now,
-    profile,
     client,
     lastAdAt,
     skipDebt,
+    hasProfile: Boolean(profile),
   });
 
-  const ad = decideAd({ now, lastAdAt, skipDebt });
+  const ad = decideAd({ now, lastAdAt, skipDebt, profile });
   return json({
     serverNow: now,
     profileAccepted: Boolean(profile),
@@ -200,7 +201,6 @@ async function handleStats(request, env) {
   await recordEvent(env, {
     type: body.type || "event",
     at: now,
-    profile: normalizeProfile(body.profile),
     client: normalizeClient(body.client),
     payload: body.payload && typeof body.payload === "object" ? body.payload : {},
   });
@@ -218,12 +218,13 @@ const GAMECHOP_CREATIVE = {
   skippable: true,
 };
 
-function decideAd({ now, lastAdAt, skipDebt }) {
+function decideAd({ now, lastAdAt, skipDebt, profile: _profile }) {
   const due = lastAdAt == null || now - lastAdAt >= HOUR_MS;
   if (!due) {
     return { show: false, reason: "within_hour", count: 0, creatives: [] };
   }
   const count = skipDebt >= 5 ? 2 : 1;
+  // profile は将来の出し分け用。現状クリエイティブは共通。
   return {
     show: true,
     reason: skipDebt >= 5 ? "skip_debt_repay" : "hourly",
