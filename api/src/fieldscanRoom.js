@@ -36,6 +36,7 @@ const DEFAULT_CONFIG = {
   transition: "countdown",
   sound: "off",
   manualAssign: "random",
+  manualPreCountdown: false,
   running: false,
 };
 
@@ -87,6 +88,8 @@ function emptyState(code) {
     previousStates: {},
     deviceOffsets: {},
     roundStartedAt: null,
+    manualCueEndsAt: null,
+    pendingReveal: null,
     playPackage: null,
     packageIndex: 0,
     lastActivity: Date.now(),
@@ -254,6 +257,12 @@ export class FieldScanRoom {
 
   async alarm() {
     await this.ready;
+    if (this.data.pendingReveal && this.data.manualCueEndsAt) {
+      await this.revealManualRound();
+      await this.persist();
+      this.broadcast();
+      return;
+    }
     const { config } = this.data;
     if (!config.running || config.timingMode === "manual" || !this.data.playPackage) return;
     this.data.packageIndex += 1;
@@ -334,6 +343,7 @@ export class FieldScanRoom {
     }
     if (next.sound !== "on") next.sound = "off";
     if (next.manualAssign !== "pick") next.manualAssign = "random";
+    next.manualPreCountdown = !!next.manualPreCountdown;
 
     this.data.config = next;
     await this.applyTimingModeChange(prevTiming);
@@ -552,6 +562,43 @@ export class FieldScanRoom {
     const previous = {};
     for (const d of Object.values(data.displays)) previous[d.id] = d.state;
     const states = this.assignStates(pending);
+    data.previousStates = previous;
+    data.pendingReveal = null;
+    data.manualCueEndsAt = null;
+
+    if (data.config.manualPreCountdown) {
+      // いまの色のまま 3→2→1 を出してから、新しい色へ切り替える
+      data.transition = "countdown";
+      data.pendingReveal = states;
+      const now = Date.now();
+      data.roundStartedAt = now;
+      data.manualCueEndsAt = now + 3000;
+      data.nextChangeAt = data.manualCueEndsAt;
+      data.transitionEndsAt = null;
+      data.blackEndsAt = null;
+      const offsets = {};
+      for (const id of Object.keys(data.displays)) offsets[id] = 0;
+      data.deviceOffsets = offsets;
+      await this.ctx.storage.setAlarm(data.manualCueEndsAt);
+      return;
+    }
+
+    this.applyRevealStates(states, previous);
+  }
+
+  async revealManualRound() {
+    const data = this.data;
+    if (!data.pendingReveal) return;
+    const states = data.pendingReveal;
+    const previous = { ...data.previousStates };
+    data.pendingReveal = null;
+    data.manualCueEndsAt = null;
+    await this.ctx.storage.deleteAlarm();
+    this.applyRevealStates(states, previous);
+  }
+
+  applyRevealStates(states, previous) {
+    const data = this.data;
     data.roundId += 1;
     data.transition = pickTransition(data.config);
     data.previousStates = previous;
@@ -569,6 +616,7 @@ export class FieldScanRoom {
     data.transitionEndsAt = now + lead;
     data.blackEndsAt = now + lead + BLACK_GAP_MS;
     data.nextChangeAt = null;
+    data.manualCueEndsAt = null;
   }
 
   /* ---------- snapshot / io ---------- */
@@ -599,6 +647,7 @@ export class FieldScanRoom {
       transition: data.transition,
       transitionEndsAt: data.transitionEndsAt,
       blackEndsAt: data.blackEndsAt,
+      manualCueEndsAt: data.manualCueEndsAt,
       playPackage:
         data.config.running && data.config.timingMode !== "manual" ? data.playPackage : null,
       serverNow: Date.now(),

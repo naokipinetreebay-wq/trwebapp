@@ -38,6 +38,7 @@ const DEFAULT_CONFIG = {
   transition: "countdown",
   sound: "off",
   manualAssign: "random",
+  manualPreCountdown: false,
   running: false,
 };
 
@@ -158,6 +159,8 @@ function emptyState(code) {
     playPackage: null,
     lastCounts: zeroCounts(),
     packageIndex: 0,
+    pendingReveal: null,
+    manualCueEndsAt: null,
     lastActivity: Date.now(),
   };
 }
@@ -323,6 +326,12 @@ export class GoalRoom {
 
   async alarm() {
     await this.ready;
+    if (this.data.pendingReveal && this.data.manualCueEndsAt) {
+      await this.revealManualRound();
+      await this.persist();
+      this.broadcast();
+      return;
+    }
     const { config } = this.data;
     if (!config.running || config.timingMode === "manual" || !this.data.playPackage) return;
     this.data.packageIndex += 1;
@@ -403,6 +412,7 @@ export class GoalRoom {
     }
     if (next.sound !== "on") next.sound = "off";
     if (next.manualAssign !== "pick") next.manualAssign = "random";
+    next.manualPreCountdown = !!next.manualPreCountdown;
     next.colorCount = Number(next.colorCount) === 2 ? 2 : 3;
 
     this.data.config = next;
@@ -612,6 +622,43 @@ export class GoalRoom {
     const previous = {};
     for (const d of Object.values(data.displays)) previous[d.id] = d.color;
     const colors = this.assignColors(pending);
+    data.previousColors = previous;
+    data.pendingReveal = null;
+    data.manualCueEndsAt = null;
+
+    if (data.config.manualPreCountdown) {
+      // いまの色のまま 3→2→1 を出してから、新しい色へ切り替える
+      data.transition = "countdown";
+      data.pendingReveal = colors;
+      const now = Date.now();
+      data.roundStartedAt = now;
+      data.manualCueEndsAt = now + 3000;
+      data.nextChangeAt = data.manualCueEndsAt;
+      data.transitionEndsAt = null;
+      data.blackEndsAt = null;
+      const offsets = {};
+      for (const id of Object.keys(data.displays)) offsets[id] = 0;
+      data.deviceOffsets = offsets;
+      await this.ctx.storage.setAlarm(data.manualCueEndsAt);
+      return;
+    }
+
+    this.applyRevealColors(colors, previous);
+  }
+
+  async revealManualRound() {
+    const data = this.data;
+    if (!data.pendingReveal) return;
+    const colors = data.pendingReveal;
+    const previous = { ...data.previousColors };
+    data.pendingReveal = null;
+    data.manualCueEndsAt = null;
+    await this.ctx.storage.deleteAlarm();
+    this.applyRevealColors(colors, previous);
+  }
+
+  applyRevealColors(colors, previous) {
+    const data = this.data;
     data.roundId += 1;
     data.transition = pickTransition(data.config);
     data.previousColors = previous;
@@ -629,6 +676,7 @@ export class GoalRoom {
     data.transitionEndsAt = now + lead;
     data.blackEndsAt = now + lead + BLACK_GAP_MS;
     data.nextChangeAt = null;
+    data.manualCueEndsAt = null;
   }
 
   /* ---------- snapshot / io ---------- */
