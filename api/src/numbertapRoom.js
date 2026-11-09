@@ -1,8 +1,7 @@
 /**
  * NumberTap 用ルーム Durable Object。
- * Hibernation WebSocket + alarm で盤面の再配布（タイマー）。状態は storage に保存。
- * 1→9→0 の順に、正解の数字が出ている Display をタップして進める。
- * 設定・開始・停止はコントローラのみ。タップは Display から。
+ * ローカル化: 盤面・進行・採点はコントローラが hostPush する。
+ * DO は参加管理と薄い中継（tap → clientEvent）。旧 alarm 再配布は localHost 時は使わない。
  */
 
 const APP_ID = "numbertap";
@@ -58,6 +57,8 @@ function emptyState(code) {
     startedAt: null,
     finishedAt: null,
     lastElapsedMs: null,
+    localHost: true,
+    hostOverlay: null,
     lastActivity: Date.now(),
   };
 }
@@ -173,6 +174,14 @@ export class NumberTapRoom {
     // タップは Display のみ（deviceId は接続時のものを信頼する）
     if (msg.type === "tap") {
       if (meta.role !== "display" || !meta.deviceId) return;
+      if (this.data.localHost) {
+        this.relayClientEvent({
+          type: "clientEvent",
+          event: "tap",
+          deviceId: meta.deviceId,
+        });
+        return;
+      }
       await this.tap(meta.deviceId);
       return;
     }
@@ -196,11 +205,17 @@ export class NumberTapRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start();
+      await this.start(msg.local !== false);
       return;
     }
     if (msg.type === "stop") {
       await this.stop();
+      return;
+    }
+    if (msg.type === "hostPush") {
+      this.applyHostPush(msg.overlay || {});
+      await this.persist();
+      this.broadcast();
       return;
     }
   }
@@ -219,8 +234,12 @@ export class NumberTapRoom {
     });
     if (stillOpen) return;
     d.connected = false;
-    // 正解の Display が落ちたら盤面を配り直す
-    if (this.data.config.running && this.data.targetId === meta.deviceId) {
+    // 正解の Display が落ちたら盤面を配り直す（ローカル化時はコントローラが担当）
+    if (
+      !this.data.localHost &&
+      this.data.config.running &&
+      this.data.targetId === meta.deviceId
+    ) {
       this.deal();
     }
     await this.persist();
@@ -234,6 +253,7 @@ export class NumberTapRoom {
   /** タイマー再配布 */
   async alarm() {
     await this.ready;
+    if (this.data.localHost) return;
     if (!this.data.config.running || this.data.step >= SEQUENCE.length) return;
     this.deal();
     await this.arm();
@@ -247,7 +267,9 @@ export class NumberTapRoom {
     if (existing) {
       existing.connected = true;
       if (cleanLabel) existing.label = cleanLabel;
-      if (this.isActive() && this.data.digits[deviceId] == null) this.deal();
+      if (!this.data.localHost && this.isActive() && this.data.digits[deviceId] == null) {
+        this.deal();
+      }
       return { ok: true };
     }
     const count = Object.keys(this.data.displays).length;
@@ -259,7 +281,7 @@ export class NumberTapRoom {
       label: cleanLabel || `T${count + 1}`,
       connected: true,
     };
-    if (this.isActive()) this.deal();
+    if (!this.data.localHost && this.isActive()) this.deal();
     return { ok: true };
   }
 
@@ -281,20 +303,34 @@ export class NumberTapRoom {
     next.randomMinSeconds = clamp(num(next.randomMinSeconds, cur.randomMinSeconds), 0.5, 8);
     next.randomMaxSeconds = clamp(num(next.randomMaxSeconds, cur.randomMaxSeconds), 0.5, 8);
     this.data.config = next;
-    if (next.running) await this.arm();
+    if (!this.data.localHost && next.running) await this.arm();
     await this.persist();
     this.broadcast();
   }
 
-  async start() {
+  async start(local = true) {
     if (this.connectedIds().length === 0) {
       this.broadcast();
       return;
     }
+    await this.ctx.storage.deleteAlarm();
+    this.data.localHost = local !== false;
+    this.data.hostOverlay = null;
     this.data.step = 0;
     this.data.config.running = true;
     this.data.finishedAt = null;
     this.data.lastElapsedMs = null;
+    this.data.digits = {};
+    this.data.targetId = null;
+    this.data.startedAt = null;
+
+    if (this.data.localHost) {
+      // 盤面はコントローラが hostPush する
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+
     this.deal();
     this.data.startedAt = Date.now();
     await this.arm();
@@ -303,10 +339,47 @@ export class NumberTapRoom {
   }
 
   async stop() {
+    const host = this.data.hostOverlay;
+    if (host) {
+      if (host.step != null) this.data.step = host.step;
+      if (host.finishedAt != null) this.data.finishedAt = host.finishedAt;
+      if (host.lastElapsedMs != null) this.data.lastElapsedMs = host.lastElapsedMs;
+      if (host.startedAt != null) this.data.startedAt = host.startedAt;
+      if (host.digits) this.data.digits = { ...host.digits };
+      if (host.boardId != null) this.data.boardId = host.boardId;
+    }
     this.data.config.running = false;
+    this.data.hostOverlay = null;
     await this.ctx.storage.deleteAlarm();
     await this.persist();
     this.broadcast();
+  }
+
+  applyHostPush(overlay) {
+    const d = this.data;
+    d.hostOverlay = { ...(d.hostOverlay || {}), ...overlay };
+    if (overlay.digits) d.digits = { ...overlay.digits };
+    if (overlay.step != null) d.step = overlay.step;
+    if (overlay.targetId !== undefined) d.targetId = overlay.targetId;
+    if (overlay.boardId != null) d.boardId = overlay.boardId;
+    if (overlay.startedAt !== undefined) d.startedAt = overlay.startedAt;
+    if (overlay.lastElapsedMs !== undefined) d.lastElapsedMs = overlay.lastElapsedMs;
+    if (overlay.finishedAt != null) {
+      d.finishedAt = overlay.finishedAt;
+      d.config.running = false;
+    }
+    d.lastActivity = Date.now();
+  }
+
+  relayClientEvent(payload) {
+    const raw = JSON.stringify(payload);
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(raw);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   async tap(deviceId) {
@@ -363,25 +436,27 @@ export class NumberTapRoom {
   }
 
   snapshot() {
+    const host = this.data.hostOverlay || null;
+    const digits = host?.digits ? { ...host.digits } : { ...this.data.digits };
+    const step = host?.step ?? this.data.step;
     const displays = Object.values(this.data.displays).map((d) => ({
       id: d.id,
       label: d.label,
-      digit: this.data.digits[d.id] ?? null,
+      digit: digits[d.id] ?? null,
       connected: !!d.connected,
     }));
-    const step = this.data.step;
     return {
       code: this.data.code,
       config: this.data.config,
       displays,
       step,
       target: step < SEQUENCE.length ? SEQUENCE[step] : null,
-      digits: { ...this.data.digits },
-      boardId: this.data.boardId,
-      startedAt: this.data.startedAt,
-      finishedAt: this.data.finishedAt,
-      lastElapsedMs: this.data.lastElapsedMs,
-      serverNow: Date.now(),
+      digits,
+      boardId: host?.boardId ?? this.data.boardId,
+      startedAt: host?.startedAt ?? this.data.startedAt,
+      finishedAt: host?.finishedAt ?? this.data.finishedAt,
+      lastElapsedMs: host?.lastElapsedMs ?? this.data.lastElapsedMs,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

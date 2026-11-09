@@ -1,7 +1,7 @@
 /**
  * Saccade 用ルーム Durable Object。
- * Hibernation WebSocket + alarm で playPackage の位相（center / gap / peripheral）を進める。
- * 状態は storage に保存。
+ * ローカル化: プレー進行・パッケージはコントローラが hostPush する。
+ * DO は参加管理と薄い中継。旧 alarm 自動進行は localHost 時は使わない。
  * saccadeTR/src/server/room.ts と src/lib/{types,motion,placement}.ts の移植。
  */
 
@@ -82,6 +82,14 @@ function pickTarget(ids, previous, rng) {
   return choices[Math.max(0, index)];
 }
 
+/** 調整モード: place 順（device1 → device2 → …）で外周を一周。 */
+function pickSequential(ids, previous) {
+  if (!ids.length) return null;
+  if (!previous) return ids[0];
+  const idx = ids.indexOf(previous);
+  return ids[(idx < 0 ? 0 : idx + 1) % ids.length];
+}
+
 /* ---------- placement (lib/placement.ts)。12時を0度、時計回り ---------- */
 
 const FIXED_ANGLES = {
@@ -125,6 +133,8 @@ function emptyState(code, app = SACCADE_APP_ID) {
     fromAngle: 0,
     toAngle: 0,
     targetId: null,
+    localHost: true,
+    hostOverlay: null,
     lastActivity: Date.now(),
   };
 }
@@ -253,12 +263,19 @@ export class SaccadeRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start(msg.mode);
+      await this.start(msg.mode, msg.local !== false);
       this.broadcast();
       return;
     }
     if (msg.type === "stop") {
       await this.stop();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "hostPush") {
+      if (meta.role !== "controller") return;
+      this.applyHostPush(msg.overlay || {});
+      await this.persist();
       this.broadcast();
       return;
     }
@@ -284,6 +301,8 @@ export class SaccadeRoom {
   /** 次の位相へ進める。次が無ければ（train の終了時刻）終了する。 */
   async alarm() {
     await this.ready;
+    // ローカル化: 進行はコントローラ側。DO alarm では進めない。
+    if (this.data.localHost) return;
     const d = this.data;
     if (!d.config.running || !d.playPackage) return;
     const frame = d.playPackage.phases[d.packageIndex + 1];
@@ -390,6 +409,7 @@ export class SaccadeRoom {
   liveIds() {
     return Object.values(this.data.displays)
       .filter((d) => d.connected)
+      .sort((a, b) => a.place - b.place)
       .map((d) => d.id);
   }
 
@@ -402,7 +422,7 @@ export class SaccadeRoom {
 
   /* ---------- run control ---------- */
 
-  async start(mode = "train") {
+  async start(mode = "train", local = true) {
     const d = this.data;
     const ids = this.liveIds();
     const runMode = mode === "adjust" ? "adjust" : "train";
@@ -418,20 +438,28 @@ export class SaccadeRoom {
     const now = Date.now();
     d.config.running = true;
     d.config.mode = runMode;
+    d.localHost = local !== false;
     d.startedAt = now;
     d.endsAt = runMode === "train" ? now + d.config.durationSeconds * 1000 : null;
     d.finishedAt = null;
     d.bound = "out";
     d.packageIndex = 0;
-    d.playPackage = this.buildPlayPackage(ids, now, d.endsAt);
+    d.hostOverlay = null;
+    d.playPackage = null;
+    d.phaseStartedAt = null;
+    d.targetId = null;
 
-    const first = d.playPackage.phases[0];
-    if (!first) {
-      await this.finish();
-      return false;
+    // パッケージはコントローラが hostPush する
+    if (!d.localHost) {
+      d.playPackage = this.buildPlayPackage(ids, now, d.endsAt, runMode);
+      const first = d.playPackage.phases[0];
+      if (!first) {
+        await this.finish();
+        return false;
+      }
+      this.applyPhase(first);
+      await this.armPackage();
     }
-    this.applyPhase(first);
-    await this.armPackage();
     await this.persist();
     return true;
   }
@@ -439,14 +467,40 @@ export class SaccadeRoom {
   async stop() {
     await this.ctx.storage.deleteAlarm();
     const d = this.data;
+    const host = d.hostOverlay;
+    if (host?.finishedAt != null) d.finishedAt = host.finishedAt;
+    else d.finishedAt = null;
     d.config.running = false;
     d.config.mode = "idle";
-    d.finishedAt = null;
     d.phaseStartedAt = null;
     d.targetId = null;
     d.playPackage = null;
     d.packageIndex = 0;
+    d.hostOverlay = null;
     await this.persist();
+  }
+
+  applyHostPush(overlay) {
+    const d = this.data;
+    d.hostOverlay = { ...(d.hostOverlay || {}), ...overlay };
+    if (overlay.playPackage !== undefined) d.playPackage = overlay.playPackage;
+    if (overlay.phase !== undefined) d.phase = overlay.phase;
+    if (overlay.phaseStartedAt !== undefined) d.phaseStartedAt = overlay.phaseStartedAt;
+    if (overlay.phaseDurationMs != null) d.phaseDurationMs = overlay.phaseDurationMs;
+    if (overlay.fromAngle != null) d.fromAngle = overlay.fromAngle;
+    if (overlay.toAngle != null) d.toAngle = overlay.toAngle;
+    if (overlay.targetId !== undefined) d.targetId = overlay.targetId;
+    if (overlay.startedAt !== undefined) d.startedAt = overlay.startedAt;
+    if (overlay.endsAt !== undefined) d.endsAt = overlay.endsAt;
+    if (overlay.finishedAt != null) {
+      d.finishedAt = overlay.finishedAt;
+      d.config.running = false;
+      d.config.mode = "idle";
+      d.playPackage = null;
+      d.phaseStartedAt = null;
+      d.targetId = null;
+    }
+    d.lastActivity = Date.now();
   }
 
   durationFor(phase) {
@@ -460,13 +514,14 @@ export class SaccadeRoom {
     return Math.max(200, Math.round(seconds * 1000));
   }
 
-  buildPlayPackage(ids, startAt, endsAt) {
+  buildPlayPackage(ids, startAt, endsAt, runMode = "train") {
     const rng = Math.random;
     const phases = [];
     let phase = "center";
     let bound = "out";
     let at = startAt;
-    let targetId = pickTarget(ids, null, rng);
+    let targetId =
+      runMode === "adjust" ? pickSequential(ids, null) : pickTarget(ids, null, rng);
     let toAngle = this.angleOf(targetId);
     let fromAngle = (toAngle + 180) % 360;
     let previous = null;
@@ -490,7 +545,10 @@ export class SaccadeRoom {
       phase = next.phase;
       if (phase === "center") {
         previous = targetId;
-        targetId = pickTarget(ids, previous, rng);
+        targetId =
+          runMode === "adjust"
+            ? pickSequential(ids, previous)
+            : pickTarget(ids, previous, rng);
         fromAngle = previous ? this.angleOf(previous) : toAngle;
         toAngle = this.angleOf(targetId);
       }
@@ -529,7 +587,12 @@ export class SaccadeRoom {
         await this.finish();
         return;
       }
-      const more = this.buildPlayPackage(ids, last.phaseStartedAt + last.phaseDurationMs, null);
+      const more = this.buildPlayPackage(
+        ids,
+        last.phaseStartedAt + last.phaseDurationMs,
+        null,
+        d.config.mode
+      );
       const kept = d.playPackage.phases.slice(-4);
       d.playPackage = { endsAt: null, phases: [...kept, ...more.phases] };
       d.packageIndex = Math.max(0, kept.length - 1);
@@ -562,6 +625,7 @@ export class SaccadeRoom {
 
   snapshot() {
     const d = this.data;
+    const host = d.hostOverlay || null;
     const running = d.config.running;
     const displays = Object.values(d.displays).map((disp) => ({
       id: disp.id,
@@ -573,17 +637,21 @@ export class SaccadeRoom {
       code: d.code,
       config: d.config,
       displays,
-      phase: running ? d.phase : null,
-      phaseStartedAt: running ? d.phaseStartedAt : null,
-      phaseDurationMs: d.phaseDurationMs,
-      fromAngle: d.fromAngle,
-      toAngle: d.toAngle,
-      targetId: running ? d.targetId : null,
-      startedAt: d.startedAt,
-      endsAt: d.endsAt,
-      finishedAt: d.finishedAt,
-      playPackage: running ? d.playPackage : null,
-      serverNow: Date.now(),
+      phase: running ? (host?.phase ?? d.phase) : null,
+      phaseStartedAt: running ? (host?.phaseStartedAt ?? d.phaseStartedAt) : null,
+      phaseDurationMs: host?.phaseDurationMs ?? d.phaseDurationMs,
+      fromAngle: host?.fromAngle ?? d.fromAngle,
+      toAngle: host?.toAngle ?? d.toAngle,
+      targetId: running ? (host?.targetId ?? d.targetId) : null,
+      startedAt: host?.startedAt ?? d.startedAt,
+      endsAt: host?.endsAt ?? d.endsAt,
+      finishedAt: host?.finishedAt !== undefined ? host.finishedAt : d.finishedAt,
+      playPackage: running
+        ? host?.playPackage !== undefined
+          ? host.playPackage
+          : d.playPackage
+        : null,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

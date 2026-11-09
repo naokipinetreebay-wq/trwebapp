@@ -1,12 +1,14 @@
 /**
  * Drive 用ルーム Durable Object。
- * 列パスの playPackage を alarm で進める。
+ * ローカル化: プレー進行・パッケージはコントローラが hostPush する。
+ * DO は参加管理と薄い中継。旧 alarm 自動進行は localHost 時は使わない。
  */
 
 const CONTROLLER_ID = "controller";
 const MAX_PERIPHERALS = 11;
 const MIN_INTERVAL = 2;
 const MAX_INTERVAL = 10;
+/** 互換用。localHost 時はコントローラが長いパッケージを配る */
 const PACKAGE_LAPS = 12;
 
 const DEFAULT_CONFIG = {
@@ -88,6 +90,8 @@ function emptyState(code) {
     frameStartedAt: null,
     playPackage: null,
     packageIndex: 0,
+    localHost: true,
+    hostOverlay: null,
     signals: {},
     counts: [],
     lastActivity: Date.now(),
@@ -200,7 +204,7 @@ export class DriveRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start();
+      await this.start(msg.local !== false);
       await this.persist();
       this.broadcast();
       return;
@@ -208,6 +212,31 @@ export class DriveRoom {
     if (msg.type === "stop") {
       await this.stop();
       this.broadcast();
+      return;
+    }
+    if (msg.type === "hostPush") {
+      this.data.hostOverlay = {
+        ...(this.data.hostOverlay || {}),
+        ...(msg.overlay || {}),
+      };
+      if (msg.overlay?.playPackage !== undefined) {
+        this.data.playPackage = msg.overlay.playPackage;
+      }
+      if (msg.overlay?.signals) {
+        this.data.signals = { ...msg.overlay.signals };
+        this.data.controllerSignal = msg.overlay.signals[CONTROLLER_ID] ?? null;
+      }
+      if (msg.overlay?.activeLine !== undefined) {
+        this.data.activeLine = msg.overlay.activeLine;
+      }
+      if (msg.overlay?.greens) this.data.greens = [...msg.overlay.greens];
+      if (msg.overlay?.frameStartedAt !== undefined) {
+        this.data.frameStartedAt = msg.overlay.frameStartedAt;
+      }
+      this.data.lastActivity = Date.now();
+      await this.persist();
+      this.broadcast();
+      return;
     }
   }
 
@@ -227,6 +256,8 @@ export class DriveRoom {
 
   async alarm() {
     await this.ready;
+    // ローカル化: 進行はコントローラ側。DO alarm では進めない。
+    if (this.data.localHost) return;
     if (!this.data.config.running || !this.data.playPackage) return;
     let nextIndex = this.data.packageIndex + 1;
     if (nextIndex >= this.data.playPackage.frames.length) {
@@ -303,7 +334,7 @@ export class DriveRoom {
     return Object.values(this.data.displays).filter((d) => d.connected).length;
   }
 
-  async start() {
+  async start(local = true) {
     const needed = neededPhones(this.data.config);
     if (
       this.controllersOpen().length < 1 ||
@@ -315,18 +346,29 @@ export class DriveRoom {
     await this.ctx.storage.deleteAlarm();
     this.data.counts = activeCounts(this.data.config);
     this.data.config.running = true;
+    this.data.localHost = local !== false;
     this.data.packageIndex = 0;
-    this.data.playPackage = {
-      intervalMs: this.data.config.intervalSeconds * 1000,
-      frames: this.buildFrames(Date.now(), PACKAGE_LAPS),
-    };
-    const first = this.data.playPackage.frames[0];
-    if (!first) {
-      await this.stop();
-      return;
+    this.data.playPackage = null;
+    this.data.hostOverlay = null;
+    this.data.controllerSignal = null;
+    this.data.activeLine = null;
+    this.data.greens = [];
+    this.data.signals = {};
+    this.data.frameStartedAt = null;
+    // パッケージはコントローラが hostPush する
+    if (!this.data.localHost) {
+      this.data.playPackage = {
+        intervalMs: this.data.config.intervalSeconds * 1000,
+        frames: this.buildFrames(Date.now(), PACKAGE_LAPS),
+      };
+      const first = this.data.playPackage.frames[0];
+      if (!first) {
+        await this.stop();
+        return;
+      }
+      this.applyFrame(first);
+      await this.armPackage();
     }
-    this.applyFrame(first);
-    await this.armPackage();
   }
 
   async stop() {
@@ -339,13 +381,16 @@ export class DriveRoom {
     this.data.frameStartedAt = null;
     this.data.playPackage = null;
     this.data.packageIndex = 0;
+    this.data.hostOverlay = null;
     await this.persist();
   }
 
-  computeSignals(line, greenAt) {
+  /** 全体セット同時表示。各列に緑1・ほか赤 */
+  computeSignals(greens) {
     const signals = {};
     for (const slot of slotsFor(this.data.counts)) {
-      const signal = slot.row === line + 1 ? (slot.index === greenAt ? "green" : "red") : null;
+      const greenAt = greens[slot.row - 1] ?? 0;
+      const signal = slot.index === greenAt ? "green" : "red";
       if (slot.controller) {
         signals[CONTROLLER_ID] = signal;
         continue;
@@ -362,15 +407,13 @@ export class DriveRoom {
     let at = startAt;
     for (let lap = 0; lap < laps; lap++) {
       const greens = buildPass(this.data.counts, Math.random);
-      for (let line = 0; line < this.data.counts.length; line++) {
-        frames.push({
-          frameStartedAt: at,
-          activeLine: line,
-          greens: [...greens],
-          signals: this.computeSignals(line, greens[line] ?? 0),
-        });
-        at += intervalMs;
-      }
+      frames.push({
+        frameStartedAt: at,
+        activeLine: 0,
+        greens: [...greens],
+        signals: this.computeSignals(greens),
+      });
+      at += intervalMs;
     }
     return frames;
   }
@@ -397,23 +440,36 @@ export class DriveRoom {
   }
 
   snapshot() {
-    const running = this.data.config.running;
-    const displays = Object.values(this.data.displays).map((d) => ({
+    const data = this.data;
+    const host = data.hostOverlay || null;
+    const running = data.config.running;
+    const signals = host?.signals
+      ? { ...data.signals, ...host.signals }
+      : data.signals;
+    const displays = Object.values(data.displays).map((d) => ({
       id: d.id,
       label: d.label,
       place: d.place,
       connected: !!d.connected,
-      signal: running ? this.data.signals[d.id] ?? null : null,
+      signal: running ? signals[d.id] ?? null : null,
     }));
     return {
-      code: this.data.code,
-      config: this.data.config,
+      code: data.code,
+      config: data.config,
       displays,
-      controllerSignal: running ? this.data.controllerSignal : null,
-      activeLine: running ? this.data.activeLine : null,
-      frameStartedAt: running ? this.data.frameStartedAt : null,
-      playPackage: running ? this.data.playPackage : null,
-      serverNow: Date.now(),
+      controllerSignal: running
+        ? host?.controllerSignal !== undefined
+          ? host.controllerSignal
+          : data.controllerSignal
+        : null,
+      activeLine: running ? (host?.activeLine ?? data.activeLine) : null,
+      frameStartedAt: running ? (host?.frameStartedAt ?? data.frameStartedAt) : null,
+      playPackage: running
+        ? host?.playPackage !== undefined
+          ? host.playPackage
+          : data.playPackage
+        : null,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

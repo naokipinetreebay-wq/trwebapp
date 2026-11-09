@@ -1,7 +1,7 @@
 /**
  * FieldScan 用ルーム Durable Object。
- * Hibernation WebSocket + alarm で playPackage（自動モード）を進める。状態は storage に保存。
- * fieldscanTR/src/server/room.ts と src/lib/types.ts の移植。
+ * ローカル化: プレー進行・パッケージはコントローラが hostPush する。
+ * DO は参加管理と薄い中継。旧 alarm 自動進行は localHost 時は使わない。
  */
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -92,6 +92,8 @@ function emptyState(code) {
     pendingReveal: null,
     playPackage: null,
     packageIndex: 0,
+    localHost: true,
+    hostOverlay: null,
     lastActivity: Date.now(),
   };
 }
@@ -223,7 +225,7 @@ export class FieldScanRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start();
+      await this.start(msg.local !== false);
       await this.persist();
       this.broadcast();
       return;
@@ -234,7 +236,32 @@ export class FieldScanRoom {
       this.broadcast();
       return;
     }
+    if (msg.type === "hostPush") {
+      const meta = ws.deserializeAttachment() || {};
+      if (meta.role !== "controller") return;
+      this.data.hostOverlay = {
+        ...(this.data.hostOverlay || {}),
+        ...(msg.overlay || {}),
+      };
+      if (msg.overlay?.playPackage !== undefined) {
+        this.data.playPackage = msg.overlay.playPackage;
+      }
+      if (msg.overlay?.primaryStates) {
+        for (const [id, state] of Object.entries(msg.overlay.primaryStates)) {
+          const d = this.data.displays[id];
+          if (d && (state === "free" || state === "marked" || state === "enemy")) {
+            d.state = state;
+          }
+        }
+      }
+      this.data.lastActivity = Date.now();
+      await this.persist();
+      this.broadcast();
+      return;
+    }
     if (msg.type === "next") {
+      // ローカル化後はコントローラの hostPush が正本。互換のため残す。
+      if (this.data.localHost) return;
       await this.next(msg.states);
       await this.persist();
       this.broadcast();
@@ -257,6 +284,8 @@ export class FieldScanRoom {
 
   async alarm() {
     await this.ready;
+    // ローカル化: 進行はコントローラ側。DO alarm では進めない。
+    if (this.data.localHost) return;
     if (this.data.pendingReveal && this.data.manualCueEndsAt) {
       await this.revealManualRound();
       await this.persist();
@@ -349,16 +378,20 @@ export class FieldScanRoom {
     await this.applyTimingModeChange(prevTiming);
   }
 
-  async start() {
+  async start(local = true) {
     this.data.config.running = true;
-    if (this.data.config.timingMode === "manual") {
-      await this.ctx.storage.deleteAlarm();
-      this.data.playPackage = null;
-      this.data.packageIndex = 0;
-      this.data.nextChangeAt = null;
-      return;
+    this.data.localHost = local !== false;
+    await this.ctx.storage.deleteAlarm();
+    this.data.playPackage = null;
+    this.data.packageIndex = 0;
+    this.data.nextChangeAt = null;
+    this.data.hostOverlay = null;
+    this.data.pendingReveal = null;
+    this.data.manualCueEndsAt = null;
+    // パッケージはコントローラが hostPush する
+    if (!this.data.localHost && this.data.config.timingMode !== "manual") {
+      await this.beginAutoPackage();
     }
-    await this.beginAutoPackage();
   }
 
   async stop() {
@@ -369,6 +402,9 @@ export class FieldScanRoom {
     this.data.nextChangeAt = null;
     this.data.transitionEndsAt = null;
     this.data.blackEndsAt = null;
+    this.data.hostOverlay = null;
+    this.data.pendingReveal = null;
+    this.data.manualCueEndsAt = null;
   }
 
   async next(states) {
@@ -392,6 +428,15 @@ export class FieldScanRoom {
 
   async applyTimingModeChange(prevTiming) {
     if (!this.data.config.running) return;
+    if (this.data.localHost) {
+      await this.ctx.storage.deleteAlarm();
+      if (this.data.config.timingMode === "manual") {
+        this.data.playPackage = null;
+        this.data.packageIndex = 0;
+        this.data.nextChangeAt = null;
+      }
+      return;
+    }
     if (this.data.config.timingMode === "manual") {
       await this.ctx.storage.deleteAlarm();
       this.data.playPackage = null;
@@ -634,23 +679,36 @@ export class FieldScanRoom {
         connected: connected.has(d.id),
       };
     });
+    const host = data.hostOverlay || null;
+    const mergedPrimary = host?.primaryStates
+      ? { ...primaryStates, ...host.primaryStates }
+      : primaryStates;
+    if (host?.primaryStates) {
+      for (const d of displays) {
+        if (host.primaryStates[d.id]) d.state = host.primaryStates[d.id];
+      }
+    }
     return {
       code: data.code,
       config: data.config,
       displays,
-      roundId: data.roundId,
-      primaryStates,
-      previousStates: { ...data.previousStates },
-      deviceOffsets: { ...data.deviceOffsets },
-      roundStartedAt: data.roundStartedAt,
-      nextChangeAt: data.nextChangeAt,
-      transition: data.transition,
-      transitionEndsAt: data.transitionEndsAt,
-      blackEndsAt: data.blackEndsAt,
-      manualCueEndsAt: data.manualCueEndsAt,
+      roundId: host?.roundId ?? data.roundId,
+      primaryStates: mergedPrimary,
+      previousStates: { ...(host?.previousStates ?? data.previousStates) },
+      deviceOffsets: { ...(host?.deviceOffsets ?? data.deviceOffsets) },
+      roundStartedAt: host?.roundStartedAt ?? data.roundStartedAt,
+      nextChangeAt: host?.nextChangeAt ?? data.nextChangeAt,
+      transition: host?.transition ?? data.transition,
+      transitionEndsAt: host?.transitionEndsAt ?? data.transitionEndsAt,
+      blackEndsAt: host?.blackEndsAt ?? data.blackEndsAt,
+      manualCueEndsAt: host?.manualCueEndsAt ?? data.manualCueEndsAt,
       playPackage:
-        data.config.running && data.config.timingMode !== "manual" ? data.playPackage : null,
-      serverNow: Date.now(),
+        data.config.running && data.config.timingMode !== "manual"
+          ? host?.playPackage !== undefined
+            ? host.playPackage
+            : data.playPackage
+          : null,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

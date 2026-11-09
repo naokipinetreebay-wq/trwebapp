@@ -1,7 +1,7 @@
 /**
  * Peritap 用ルーム Durable Object。
- * Hibernation WebSocket + alarm でカウントダウンとコマ送りを進める。状態は storage に保存。
- * peritapTR/src/server/room.ts と src/lib/{types,frames}.ts の移植。
+ * ローカル化: 出題パッケージ・採点はコントローラが hostPush する。
+ * DO は参加管理と薄い中継（tap → clientEvent）。旧 alarm 進行は localHost 時は使わない。
  */
 
 export const PERI_APP_ID = "peritap";
@@ -158,6 +158,8 @@ function emptyState(code, app = PERI_APP_ID) {
     judged: true,
     tappedFrames: [],
     missedFrames: [],
+    localHost: true,
+    hostOverlay: null,
     lastActivity: Date.now(),
   };
 }
@@ -270,6 +272,16 @@ export class PeriRoom {
     if (msg.type === "tap") {
       // 端末は自分の deviceId でしか押せない。
       const deviceId = meta.role === "display" ? meta.deviceId : String(msg.deviceId || "");
+      if (!deviceId) return;
+      if (this.data.localHost) {
+        this.relayClientEvent({
+          type: "clientEvent",
+          event: "tap",
+          deviceId,
+          frameStartedAt: msg.frameStartedAt ?? null,
+        });
+        return;
+      }
       if (this.tap(deviceId, msg.frameStartedAt ?? null)) {
         await this.persist();
         this.broadcast();
@@ -295,12 +307,18 @@ export class PeriRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start();
+      await this.start(msg.local !== false);
       this.broadcast();
       return;
     }
     if (msg.type === "stop") {
       await this.stop();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "hostPush") {
+      this.applyHostPush(msg.overlay || {});
+      await this.persist();
       this.broadcast();
       return;
     }
@@ -325,6 +343,8 @@ export class PeriRoom {
 
   async alarm() {
     await this.ready;
+    // ローカル化: 進行・採点はコントローラ側。DO alarm では進めない。
+    if (this.data.localHost) return;
     if (!this.data.config.running || !this.data.playPackage) return;
     if (this.data.countdown != null) {
       await this.countdownTick();
@@ -408,7 +428,7 @@ export class PeriRoom {
     return this.data.runIntervalMs;
   }
 
-  async start() {
+  async start(local = true) {
     const d = this.data;
     const ids = this.liveIds();
     if (
@@ -420,9 +440,8 @@ export class PeriRoom {
     }
     await this.ctx.storage.deleteAlarm();
 
-    const rounds = plannedRounds(d.config.durationSeconds, d.config.intervalSeconds);
-    d.runIntervalMs = Math.round(d.config.intervalSeconds * 1000);
-    const frames = buildFrames(ids, rounds, d.config.level === "hard", Math.random);
+    d.localHost = local !== false;
+    d.hostOverlay = null;
     d.frameIndex = -1;
     d.correct = 0;
     d.wrong = 0;
@@ -440,6 +459,18 @@ export class PeriRoom {
     d.digits = {};
     d.judged = true;
     d.config.running = true;
+    d.playPackage = null;
+    d.countdown = null;
+    d.runIntervalMs = Math.round(d.config.intervalSeconds * 1000);
+
+    // パッケージはコントローラが hostPush する
+    if (d.localHost) {
+      await this.persist();
+      return true;
+    }
+
+    const rounds = plannedRounds(d.config.durationSeconds, d.config.intervalSeconds);
+    const frames = buildFrames(ids, rounds, d.config.level === "hard", Math.random);
     d.countdown = COUNTDOWN_FROM;
 
     const countdownStartedAt = Date.now();
@@ -464,9 +495,21 @@ export class PeriRoom {
   async stop() {
     await this.ctx.storage.deleteAlarm();
     const d = this.data;
+    // 結果表示用に host の最終スコアを data へ残す
+    const host = d.hostOverlay;
+    if (host) {
+      if (host.correct != null) d.correct = host.correct;
+      if (host.wrong != null) d.wrong = host.wrong;
+      if (host.miss != null) d.miss = host.miss;
+      if (host.asked != null) d.asked = host.asked;
+      if (host.finishedAt != null) d.finishedAt = host.finishedAt;
+      if (host.startedAt != null) d.startedAt = host.startedAt;
+      if (host.endsAt != null) d.endsAt = host.endsAt;
+    }
     d.config.running = false;
     d.countdown = null;
     d.playPackage = null;
+    d.hostOverlay = null;
     d.cue = null;
     d.centerDigit = null;
     d.scored = false;
@@ -477,6 +520,36 @@ export class PeriRoom {
     d.missedFrames = [];
     d.judged = true;
     await this.persist();
+  }
+
+  applyHostPush(overlay) {
+    const d = this.data;
+    d.hostOverlay = { ...(d.hostOverlay || {}), ...overlay };
+    if (overlay.playPackage !== undefined) d.playPackage = overlay.playPackage;
+    if (overlay.correct != null) d.correct = overlay.correct;
+    if (overlay.wrong != null) d.wrong = overlay.wrong;
+    if (overlay.miss != null) d.miss = overlay.miss;
+    if (overlay.asked != null) d.asked = overlay.asked;
+    if (overlay.startedAt !== undefined) d.startedAt = overlay.startedAt;
+    if (overlay.endsAt !== undefined) d.endsAt = overlay.endsAt;
+    if (overlay.finishedAt != null) {
+      d.finishedAt = overlay.finishedAt;
+      d.config.running = false;
+      d.countdown = null;
+      d.playPackage = null;
+    }
+    d.lastActivity = Date.now();
+  }
+
+  relayClientEvent(payload) {
+    const raw = JSON.stringify(payload);
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(raw);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   /** 次のカウントダウン拍（3→2→1→開始）の時刻にアラームを置く。 */
@@ -616,33 +689,41 @@ export class PeriRoom {
 
   snapshot() {
     const d = this.data;
+    const host = d.hostOverlay || null;
     const running = d.config.running;
+    const digits = host?.digits ? { ...d.digits, ...host.digits } : d.digits;
     const displays = Object.values(d.displays).map((disp) => ({
       id: disp.id,
       label: disp.label,
       place: disp.place,
-      digit: running ? d.digits[disp.id] ?? null : null,
+      digit: running ? digits[disp.id] ?? null : null,
       connected: !!disp.connected,
     }));
+    const playPackage =
+      running
+        ? host?.playPackage !== undefined
+          ? host.playPackage
+          : d.playPackage
+        : null;
     return {
       code: d.code,
       config: d.config,
       displays,
-      cue: running ? d.cue : null,
-      centerDigit: running ? d.centerDigit : null,
-      scored: running ? d.scored : false,
-      correct: d.correct,
-      wrong: d.wrong,
-      miss: d.miss,
-      asked: d.asked,
+      cue: running ? (host?.cue ?? d.cue) : null,
+      centerDigit: running ? (host?.centerDigit ?? d.centerDigit) : null,
+      scored: running ? (host?.scored ?? d.scored) : false,
+      correct: host?.correct ?? d.correct,
+      wrong: host?.wrong ?? d.wrong,
+      miss: host?.miss ?? d.miss,
+      asked: host?.asked ?? d.asked,
       questionTotal: QUESTION_TOTAL,
-      endsAt: d.endsAt,
-      frameStartedAt: d.frameStartedAt,
-      startedAt: d.startedAt,
-      finishedAt: d.finishedAt,
-      countdown: running ? d.countdown : null,
-      playPackage: running ? d.playPackage : null,
-      serverNow: Date.now(),
+      endsAt: host?.endsAt ?? d.endsAt,
+      frameStartedAt: host?.frameStartedAt ?? d.frameStartedAt,
+      startedAt: host?.startedAt ?? d.startedAt,
+      finishedAt: host?.finishedAt ?? d.finishedAt,
+      countdown: running ? (host?.countdown ?? d.countdown) : null,
+      playPackage,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

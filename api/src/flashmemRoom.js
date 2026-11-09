@@ -1,7 +1,8 @@
 /**
  * FlashMem 用ルーム Durable Object。
- * Hibernation WebSocket + alarm で flash → answer（openAnswers）へ進める。状態は storage に保存。
- * flash → answer → review。flash の窓は playPackage として端末へ配る。
+ * ローカル化: 進行・採点はコントローラが hostPush する。
+ * DO は参加管理と薄い中継（tap → clientEvent）。旧 alarm 進行は localHost 時は使わない。
+ * 最新フロー: countdown → flash → ready → answer → result → review。
  * flashmemTR/src/server/room.ts と src/lib/{types,deal}.ts の移植。
  */
 
@@ -12,6 +13,8 @@ const MIN_PERIPHERALS = 2;
 const MAX_PERIPHERALS = 6;
 const MIN_FLASH = 0.1;
 const MAX_FLASH = 1;
+const COUNTDOWN_FROM = 3;
+const COUNTDOWN_MS = 1000;
 
 const DEFAULT_CONFIG = {
   level: "easy",
@@ -107,7 +110,11 @@ function emptyState(code, app = FLASHMEM_APP_ID) {
     slots: [],
     order: [],
     promptIndex: 0,
+    answers: [],
+    reviewIndex: null,
     lastTapAt: 0,
+    localHost: true,
+    hostOverlay: null,
     lastActivity: Date.now(),
   };
 }
@@ -221,6 +228,16 @@ export class FlashMemRoom {
       // 端末は自分の deviceId でしか押せない。コントローラは "center"（中央の数字）として押す。
       const deviceId = meta.role === "display" ? meta.deviceId : String(msg.deviceId || "");
       const half = msg.half === "left" || msg.half === "right" ? msg.half : null;
+      if (!deviceId) return;
+      if (this.data.localHost) {
+        this.relayClientEvent({
+          type: "clientEvent",
+          event: "tap",
+          deviceId,
+          half,
+        });
+        return;
+      }
       if (this.tap(deviceId, half)) {
         await this.persist();
         this.broadcast();
@@ -246,12 +263,38 @@ export class FlashMemRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start();
+      await this.start(msg.local !== false);
       this.broadcast();
       return;
     }
     if (msg.type === "stop") {
       await this.stop();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "hostPush") {
+      this.applyHostPush(msg.overlay || {});
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "beginAnswer") {
+      if (this.data.localHost) return;
+      await this.beginAnswer();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "openReview") {
+      if (this.data.localHost) return;
+      this.openReview();
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "reviewStep") {
+      if (this.data.localHost) return;
+      this.reviewStep(msg.delta || 0);
+      await this.persist();
       this.broadcast();
       return;
     }
@@ -276,9 +319,22 @@ export class FlashMemRoom {
 
   async alarm() {
     await this.ready;
-    if (this.data.phase !== "flash") return;
-    await this.openAnswers();
-    this.broadcast();
+    // ローカル化: 進行はコントローラ側。DO alarm では進めない。
+    if (this.data.localHost) return;
+    const d = this.data;
+    if (d.phase === "countdown") {
+      d.phase = "flash";
+      await this.ctx.storage.setAlarm(Math.max(Date.now() + 1, d.flashEndsAt || Date.now() + 1));
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+    if (d.phase === "flash") {
+      d.phase = "ready";
+      d.playPackage = null;
+      await this.persist();
+      this.broadcast();
+    }
   }
 
   /* ---------- displays / config ---------- */
@@ -340,12 +396,13 @@ export class FlashMemRoom {
   liveIds() {
     return Object.values(this.data.displays)
       .filter((d) => d.connected)
+      .sort((a, b) => a.place - b.place)
       .map((d) => d.id);
   }
 
   /* ---------- run control ---------- */
 
-  async start() {
+  async start(local = true) {
     const d = this.data;
     const ids = this.liveIds();
     if (
@@ -357,26 +414,49 @@ export class FlashMemRoom {
     }
     await this.ctx.storage.deleteAlarm();
 
+    d.localHost = local !== false;
+    d.hostOverlay = null;
+    d.slots = [];
+    d.order = [];
+    d.promptIndex = 0;
+    d.prompt = null;
+    d.asked = 0;
+    d.correct = 0;
+    d.answers = [];
+    d.reviewIndex = null;
+    d.finishedAt = null;
+    d.lastTapAt = 0;
+    d.flashStartedAt = null;
+    d.flashEndsAt = null;
+    d.playPackage = null;
+    d.phase = "idle";
+    d.config.running = true;
+
+    // パッケージ・進行はコントローラが hostPush する
+    if (d.localHost) {
+      await this.persist();
+      return true;
+    }
+
     d.slots = deal(ids, d.config.centerNumber, d.config.split, d.config.level, Math.random);
     d.order = shuffle(
       d.slots.map((_, index) => index),
       Math.random
     );
-    d.promptIndex = 0;
-    d.prompt = null;
-    d.asked = 0;
-    d.correct = 0;
-    d.finishedAt = null;
-    d.lastTapAt = 0;
-    d.phase = "flash";
-    d.config.running = true;
-    d.flashStartedAt = Date.now();
-    d.flashEndsAt = d.flashStartedAt + Math.round(d.config.flashSeconds * 1000);
+    const now = Date.now();
+    const flashStartedAt = now + COUNTDOWN_FROM * COUNTDOWN_MS;
+    const flashEndsAt = flashStartedAt + Math.round(d.config.flashSeconds * 1000);
+    d.phase = "countdown";
+    d.flashStartedAt = flashStartedAt;
+    d.flashEndsAt = flashEndsAt;
     d.playPackage = {
-      flashStartedAt: d.flashStartedAt,
-      flashEndsAt: d.flashEndsAt,
+      countdownStartedAt: now,
+      countdownFrom: COUNTDOWN_FROM,
+      countdownMs: COUNTDOWN_MS,
+      flashStartedAt,
+      flashEndsAt,
     };
-    await this.ctx.storage.setAlarm(Math.max(Date.now() + 1, d.flashEndsAt));
+    await this.ctx.storage.setAlarm(Math.max(Date.now() + 1, flashStartedAt));
     await this.persist();
     return true;
   }
@@ -384,6 +464,13 @@ export class FlashMemRoom {
   async stop() {
     await this.ctx.storage.deleteAlarm();
     const d = this.data;
+    const host = d.hostOverlay;
+    if (host) {
+      if (host.correct != null) d.correct = host.correct;
+      if (host.asked != null) d.asked = host.asked;
+      if (host.finishedAt != null) d.finishedAt = host.finishedAt;
+      if (host.answers) d.answers = host.answers;
+    }
     d.config.running = false;
     d.phase = "idle";
     d.slots = [];
@@ -396,16 +483,69 @@ export class FlashMemRoom {
     d.flashEndsAt = null;
     d.playPackage = null;
     d.finishedAt = null;
+    d.answers = [];
+    d.reviewIndex = null;
+    d.hostOverlay = null;
     await this.persist();
   }
 
-  /** flash の窓が閉じたら、数字を伏せて問題を出し始める。 */
-  async openAnswers() {
+  applyHostPush(overlay) {
     const d = this.data;
-    if (d.phase !== "flash") return;
+    d.hostOverlay = { ...(d.hostOverlay || {}), ...overlay };
+    if (overlay.playPackage !== undefined) d.playPackage = overlay.playPackage;
+    if (overlay.phase != null) d.phase = overlay.phase;
+    if (overlay.slots) d.slots = overlay.slots;
+    if (overlay.prompt !== undefined) d.prompt = overlay.prompt;
+    if (overlay.asked != null) d.asked = overlay.asked;
+    if (overlay.correct != null) d.correct = overlay.correct;
+    if (overlay.flashStartedAt !== undefined) d.flashStartedAt = overlay.flashStartedAt;
+    if (overlay.flashEndsAt !== undefined) d.flashEndsAt = overlay.flashEndsAt;
+    if (overlay.answers) d.answers = overlay.answers;
+    if (overlay.reviewIndex !== undefined) d.reviewIndex = overlay.reviewIndex;
+    if (overlay.running === false) d.config.running = false;
+    if (overlay.running === true) d.config.running = true;
+    if (overlay.finishedAt != null) {
+      d.finishedAt = overlay.finishedAt;
+      d.config.running = false;
+      d.playPackage = null;
+    }
+    d.lastActivity = Date.now();
+  }
+
+  relayClientEvent(payload) {
+    const raw = JSON.stringify(payload);
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(raw);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  async beginAnswer() {
+    const d = this.data;
+    if (d.phase !== "ready" && d.phase !== "flash") return;
     d.phase = "answer";
     d.prompt = d.slots[d.order[0]]?.value ?? null;
+    d.promptIndex = 0;
     await this.persist();
+  }
+
+  openReview() {
+    const d = this.data;
+    if (d.phase !== "result" && d.phase !== "review") return;
+    d.phase = "review";
+    d.reviewIndex = 0;
+    d.prompt = d.answers[0]?.prompt ?? null;
+  }
+
+  reviewStep(delta) {
+    const d = this.data;
+    if (d.phase !== "review" || !d.answers.length) return;
+    const next = Math.max(0, Math.min(d.answers.length - 1, (d.reviewIndex ?? 0) + delta));
+    d.reviewIndex = next;
+    d.prompt = d.answers[next]?.prompt ?? null;
   }
 
   /** @returns {boolean} 状態が変わったか */
@@ -418,12 +558,19 @@ export class FlashMemRoom {
     if (!slot) return false;
     d.lastTapAt = now;
     const hit = samePlace(slot, deviceId, half);
-    slot.correct = hit;
+    d.answers.push({
+      prompt: slot.value,
+      correctId: slot.id,
+      correctHalf: slot.half,
+      userId: deviceId,
+      userHalf: half,
+      hit,
+    });
     if (hit) d.correct += 1;
     d.asked += 1;
     d.promptIndex += 1;
     if (d.promptIndex >= d.order.length) {
-      d.phase = "review";
+      d.phase = "result";
       d.config.running = false;
       d.finishedAt = Date.now();
       d.prompt = null;
@@ -437,35 +584,58 @@ export class FlashMemRoom {
 
   snapshot() {
     const d = this.data;
+    const host = d.hostOverlay || null;
     const displays = Object.values(d.displays).map((disp) => ({
       id: disp.id,
       label: disp.label,
       place: disp.place,
       connected: !!disp.connected,
     }));
-    // 答える間は、どこに何があったか分からないよう数値を配らない
-    const hideValues = d.phase === "answer";
-    const slots = d.slots.map((slot) => ({
-      id: slot.id,
-      half: slot.half,
-      value: hideValues ? null : slot.value,
-      correct: slot.correct,
-    }));
+    const phase = host?.phase ?? d.phase;
+    const hideValues = phase === "answer" || phase === "ready";
+    const slots = host?.slots
+      ? host.slots.map((slot) => ({
+          id: slot.id,
+          half: slot.half ?? null,
+          value: slot.value ?? null,
+          correct: slot.correct ?? null,
+          picked: slot.picked ?? null,
+        }))
+      : (d.slots || []).map((slot) => ({
+          id: slot.id,
+          half: slot.half ?? null,
+          value: hideValues ? null : slot.value ?? null,
+          correct: slot.correct ?? null,
+          picked: slot.picked ?? null,
+        }));
+    const questionTotal =
+      host?.questionTotal ??
+      (host?.slots?.length || d.slots.length || 0);
     return {
       code: d.code,
-      config: d.config,
+      config: {
+        ...d.config,
+        running: host?.running != null ? host.running : d.config.running,
+      },
       displays,
-      phase: d.phase,
+      phase,
       slots,
-      prompt: d.prompt,
-      asked: d.asked,
-      questionTotal: d.slots.length,
-      correct: d.correct,
-      flashStartedAt: d.flashStartedAt,
-      flashEndsAt: d.flashEndsAt,
-      finishedAt: d.finishedAt,
-      playPackage: d.phase === "flash" ? d.playPackage : null,
-      serverNow: Date.now(),
+      prompt: host?.prompt !== undefined ? host.prompt : d.prompt,
+      asked: host?.asked ?? d.asked,
+      questionTotal,
+      correct: host?.correct ?? d.correct,
+      flashStartedAt: host?.flashStartedAt ?? d.flashStartedAt,
+      flashEndsAt: host?.flashEndsAt ?? d.flashEndsAt,
+      finishedAt: host?.finishedAt !== undefined ? host.finishedAt : d.finishedAt,
+      playPackage:
+        phase === "countdown" || phase === "flash"
+          ? host?.playPackage !== undefined
+            ? host.playPackage
+            : d.playPackage
+          : null,
+      reviewIndex: host?.reviewIndex !== undefined ? host.reviewIndex : d.reviewIndex,
+      answers: host?.answers ?? d.answers ?? [],
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

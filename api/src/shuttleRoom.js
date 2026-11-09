@@ -1,9 +1,7 @@
 /**
  * ShuttleTouch 用ルーム Durable Object。
- * Hibernation WebSocket。タイマーなしの純タップ進行（alarm 不要）。状態は storage に保存。
- * solo: 緑の Display をタップして targetCount 回で終了。
- * battle: 緑/赤の 2 点を別々に追い、先に targetCount 回に達した色の勝ち。
- * 設定・開始・停止はコントローラのみ。タップは Display から。
+ * ローカル化: ライト配置・ヒット判定はコントローラが hostPush する。
+ * DO は参加管理と薄い中継（tap → clientEvent）。
  */
 
 const APP_ID = "shuttletouch";
@@ -47,6 +45,8 @@ function emptyState(code) {
     lastElapsedMs: null,
     /** deviceId → 最終タップ時刻（連打ロック用） */
     lastTapAt: {},
+    localHost: true,
+    hostOverlay: null,
     lastActivity: Date.now(),
   };
 }
@@ -162,6 +162,14 @@ export class ShuttleRoom {
     // タップは Display のみ（deviceId は接続時のものを信頼する）
     if (msg.type === "tap") {
       if (meta.role !== "display" || !meta.deviceId) return;
+      if (this.data.localHost) {
+        this.relayClientEvent({
+          type: "clientEvent",
+          event: "tap",
+          deviceId: meta.deviceId,
+        });
+        return;
+      }
       await this.tap(meta.deviceId);
       return;
     }
@@ -185,11 +193,17 @@ export class ShuttleRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start();
+      await this.start(msg.local !== false);
       return;
     }
     if (msg.type === "stop") {
       await this.stop();
+      return;
+    }
+    if (msg.type === "hostPush") {
+      this.applyHostPush(msg.overlay || {});
+      await this.persist();
+      this.broadcast();
       return;
     }
   }
@@ -208,7 +222,7 @@ export class ShuttleRoom {
     });
     if (stillOpen) return;
     d.connected = false;
-    if (this.isActive()) this.ensureLights();
+    if (!this.data.localHost && this.isActive()) this.ensureLights();
     await this.persist();
     this.broadcast();
   }
@@ -223,7 +237,7 @@ export class ShuttleRoom {
     if (existing) {
       existing.connected = true;
       if (cleanLabel) existing.label = cleanLabel;
-      if (this.isActive()) this.ensureLights();
+      if (!this.data.localHost && this.isActive()) this.ensureLights();
       return { ok: true };
     }
     const count = Object.keys(this.data.displays).length;
@@ -235,7 +249,7 @@ export class ShuttleRoom {
       label: cleanLabel || `T${count + 1}`,
       connected: true,
     };
-    if (this.isActive()) this.ensureLights();
+    if (!this.data.localHost && this.isActive()) this.ensureLights();
     return { ok: true };
   }
 
@@ -265,12 +279,14 @@ export class ShuttleRoom {
     this.broadcast();
   }
 
-  async start() {
+  async start(local = true) {
     const ids = this.connectedIds();
     if (ids.length === 0 || (this.data.config.mode === "battle" && ids.length < 2)) {
       this.broadcast();
       return;
     }
+    this.data.localHost = local !== false;
+    this.data.hostOverlay = null;
     this.data.hits = 0;
     this.data.greenHits = 0;
     this.data.redHits = 0;
@@ -281,6 +297,15 @@ export class ShuttleRoom {
     this.data.greenId = null;
     this.data.redId = null;
     this.data.config.running = true;
+    this.data.startedAt = null;
+
+    if (this.data.localHost) {
+      // ライトはコントローラが hostPush する
+      await this.persist();
+      this.broadcast();
+      return;
+    }
+
     this.ensureLights();
     this.data.startedAt = Date.now();
     await this.persist();
@@ -288,11 +313,53 @@ export class ShuttleRoom {
   }
 
   async stop() {
+    const host = this.data.hostOverlay;
+    if (host) {
+      if (host.hits != null) this.data.hits = host.hits;
+      if (host.greenHits != null) this.data.greenHits = host.greenHits;
+      if (host.redHits != null) this.data.redHits = host.redHits;
+      if (host.winner !== undefined) this.data.winner = host.winner;
+      if (host.finishedAt != null) this.data.finishedAt = host.finishedAt;
+      if (host.lastElapsedMs != null) this.data.lastElapsedMs = host.lastElapsedMs;
+      if (host.startedAt != null) this.data.startedAt = host.startedAt;
+      if (host.greenId !== undefined) this.data.greenId = host.greenId;
+      if (host.redId !== undefined) this.data.redId = host.redId;
+    }
     this.data.config.running = false;
     this.data.greenId = null;
     this.data.redId = null;
+    this.data.hostOverlay = null;
     await this.persist();
     this.broadcast();
+  }
+
+  applyHostPush(overlay) {
+    const d = this.data;
+    d.hostOverlay = { ...(d.hostOverlay || {}), ...overlay };
+    if (overlay.hits != null) d.hits = overlay.hits;
+    if (overlay.greenHits != null) d.greenHits = overlay.greenHits;
+    if (overlay.redHits != null) d.redHits = overlay.redHits;
+    if (overlay.greenId !== undefined) d.greenId = overlay.greenId;
+    if (overlay.redId !== undefined) d.redId = overlay.redId;
+    if (overlay.winner !== undefined) d.winner = overlay.winner;
+    if (overlay.startedAt !== undefined) d.startedAt = overlay.startedAt;
+    if (overlay.lastElapsedMs !== undefined) d.lastElapsedMs = overlay.lastElapsedMs;
+    if (overlay.finishedAt != null) {
+      d.finishedAt = overlay.finishedAt;
+      d.config.running = false;
+    }
+    d.lastActivity = Date.now();
+  }
+
+  relayClientEvent(payload) {
+    const raw = JSON.stringify(payload);
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(raw);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   async tap(deviceId) {
@@ -398,32 +465,37 @@ export class ShuttleRoom {
     }
   }
 
-  lightOf(id) {
-    if (this.data.finishedAt != null || this.data.winner) return "off";
-    if (id === this.data.greenId) return "green";
-    if (id === this.data.redId) return "red";
+  lightOf(id, greenId, redId, finishedAt, winner) {
+    if (finishedAt != null || winner) return "off";
+    if (id === greenId) return "green";
+    if (id === redId) return "red";
     return "off";
   }
 
   snapshot() {
+    const host = this.data.hostOverlay || null;
+    const greenId = host?.greenId !== undefined ? host.greenId : this.data.greenId;
+    const redId = host?.redId !== undefined ? host.redId : this.data.redId;
+    const finishedAt = host?.finishedAt ?? this.data.finishedAt;
+    const winner = host?.winner !== undefined ? host.winner : this.data.winner;
     const displays = Object.values(this.data.displays).map((d) => ({
       id: d.id,
       label: d.label,
-      light: this.lightOf(d.id),
+      light: this.lightOf(d.id, greenId, redId, finishedAt, winner),
       connected: !!d.connected,
     }));
     return {
       code: this.data.code,
       config: this.data.config,
       displays,
-      hits: this.data.hits,
-      greenHits: this.data.greenHits,
-      redHits: this.data.redHits,
-      winner: this.data.winner,
-      startedAt: this.data.startedAt,
-      finishedAt: this.data.finishedAt,
-      lastElapsedMs: this.data.lastElapsedMs,
-      serverNow: Date.now(),
+      hits: host?.hits ?? this.data.hits,
+      greenHits: host?.greenHits ?? this.data.greenHits,
+      redHits: host?.redHits ?? this.data.redHits,
+      winner,
+      startedAt: host?.startedAt ?? this.data.startedAt,
+      finishedAt,
+      lastElapsedMs: host?.lastElapsedMs ?? this.data.lastElapsedMs,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

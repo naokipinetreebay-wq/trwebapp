@@ -1,6 +1,7 @@
 /**
  * Goal（randomgoalgame）用ルーム Durable Object。
- * Hibernation WebSocket + alarm で playPackage（自動モード）を進める。状態は storage に保存。
+ * ローカル化: プレー進行・パッケージはコントローラが hostPush する。
+ * DO は参加管理と薄い中継。旧 alarm 自動進行は localHost 時は使わない。
  * randomgoalgameTR/src/server/room.ts と src/lib/types.ts の移植。
  */
 
@@ -161,6 +162,8 @@ function emptyState(code) {
     packageIndex: 0,
     pendingReveal: null,
     manualCueEndsAt: null,
+    localHost: true,
+    hostOverlay: null,
     lastActivity: Date.now(),
   };
 }
@@ -292,7 +295,7 @@ export class GoalRoom {
       return;
     }
     if (msg.type === "start") {
-      await this.start();
+      await this.start(msg.local !== false);
       await this.persist();
       this.broadcast();
       return;
@@ -303,7 +306,35 @@ export class GoalRoom {
       this.broadcast();
       return;
     }
+    if (msg.type === "hostPush") {
+      const attach = ws.deserializeAttachment() || {};
+      if (attach.role !== "controller") return;
+      this.data.hostOverlay = {
+        ...(this.data.hostOverlay || {}),
+        ...(msg.overlay || {}),
+      };
+      if (msg.overlay?.playPackage !== undefined) {
+        this.data.playPackage = msg.overlay.playPackage;
+      }
+      if (msg.overlay?.primaryColors) {
+        for (const [id, color] of Object.entries(msg.overlay.primaryColors)) {
+          const d = this.data.displays[id];
+          if (d && GOAL_COLORS.includes(color)) {
+            d.color = color;
+          }
+        }
+      }
+      if (msg.overlay?.colorCounts) {
+        this.data.lastCounts = { ...zeroCounts(), ...msg.overlay.colorCounts };
+      }
+      this.data.lastActivity = Date.now();
+      await this.persist();
+      this.broadcast();
+      return;
+    }
     if (msg.type === "next") {
+      // ローカル化後はコントローラの hostPush が正本。互換のため残す。
+      if (this.data.localHost) return;
       await this.next(msg.colors);
       await this.persist();
       this.broadcast();
@@ -326,6 +357,8 @@ export class GoalRoom {
 
   async alarm() {
     await this.ready;
+    // ローカル化: 進行はコントローラ側。DO alarm では進めない。
+    if (this.data.localHost) return;
     if (this.data.pendingReveal && this.data.manualCueEndsAt) {
       await this.revealManualRound();
       await this.persist();
@@ -420,16 +453,20 @@ export class GoalRoom {
     await this.applyTimingModeChange(prevTiming);
   }
 
-  async start() {
+  async start(local = true) {
     this.data.config.running = true;
-    if (this.data.config.timingMode === "manual") {
-      await this.ctx.storage.deleteAlarm();
-      this.data.playPackage = null;
-      this.data.packageIndex = 0;
-      this.data.nextChangeAt = null;
-      return;
+    this.data.localHost = local !== false;
+    await this.ctx.storage.deleteAlarm();
+    this.data.playPackage = null;
+    this.data.packageIndex = 0;
+    this.data.nextChangeAt = null;
+    this.data.hostOverlay = null;
+    this.data.pendingReveal = null;
+    this.data.manualCueEndsAt = null;
+    // パッケージはコントローラが hostPush する
+    if (!this.data.localHost && this.data.config.timingMode !== "manual") {
+      await this.beginAutoPackage();
     }
-    await this.beginAutoPackage();
   }
 
   async stop() {
@@ -440,6 +477,9 @@ export class GoalRoom {
     this.data.nextChangeAt = null;
     this.data.transitionEndsAt = null;
     this.data.blackEndsAt = null;
+    this.data.hostOverlay = null;
+    this.data.pendingReveal = null;
+    this.data.manualCueEndsAt = null;
   }
 
   async next(colors) {
@@ -463,6 +503,15 @@ export class GoalRoom {
 
   async applyTimingModeChange(prevTiming) {
     if (!this.data.config.running) return;
+    if (this.data.localHost) {
+      await this.ctx.storage.deleteAlarm();
+      if (this.data.config.timingMode === "manual") {
+        this.data.playPackage = null;
+        this.data.packageIndex = 0;
+        this.data.nextChangeAt = null;
+      }
+      return;
+    }
     if (this.data.config.timingMode === "manual") {
       await this.ctx.storage.deleteAlarm();
       this.data.playPackage = null;
@@ -694,23 +743,37 @@ export class GoalRoom {
         connected: connected.has(d.id),
       };
     });
+    const host = data.hostOverlay || null;
+    const mergedPrimary = host?.primaryColors
+      ? { ...primaryColors, ...host.primaryColors }
+      : primaryColors;
+    if (host?.primaryColors) {
+      for (const d of displays) {
+        if (host.primaryColors[d.id]) d.color = host.primaryColors[d.id];
+      }
+    }
     return {
       code: data.code,
       config: data.config,
       displays,
-      roundId: data.roundId,
-      primaryColors,
-      previousColors: { ...data.previousColors },
-      deviceOffsets: { ...data.deviceOffsets },
-      colorCounts: { ...data.lastCounts },
-      roundStartedAt: data.roundStartedAt,
-      nextChangeAt: data.nextChangeAt,
-      transition: data.transition,
-      transitionEndsAt: data.transitionEndsAt,
-      blackEndsAt: data.blackEndsAt,
+      roundId: host?.roundId ?? data.roundId,
+      primaryColors: mergedPrimary,
+      previousColors: { ...(host?.previousColors ?? data.previousColors) },
+      deviceOffsets: { ...(host?.deviceOffsets ?? data.deviceOffsets) },
+      colorCounts: { ...(host?.colorCounts ?? data.lastCounts) },
+      roundStartedAt: host?.roundStartedAt ?? data.roundStartedAt,
+      nextChangeAt: host?.nextChangeAt ?? data.nextChangeAt,
+      transition: host?.transition ?? data.transition,
+      transitionEndsAt: host?.transitionEndsAt ?? data.transitionEndsAt,
+      blackEndsAt: host?.blackEndsAt ?? data.blackEndsAt,
+      manualCueEndsAt: host?.manualCueEndsAt ?? data.manualCueEndsAt,
       playPackage:
-        data.config.running && data.config.timingMode !== "manual" ? data.playPackage : null,
-      serverNow: Date.now(),
+        data.config.running && data.config.timingMode !== "manual"
+          ? host?.playPackage !== undefined
+            ? host.playPackage
+            : data.playPackage
+          : null,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 

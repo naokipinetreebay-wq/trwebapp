@@ -1,6 +1,7 @@
 /**
  * Keep / Escape 用ルーム Durable Object（lone 信号アプリ共通）。
- * Hibernation WebSocket + alarm でフレーム進行。状態は storage に保存。
+ * ローカル化: プレー進行・パッケージはコントローラが hostPush する。
+ * DO は参加管理と薄い中継。旧 alarm 自動進行は localHost 時は使わない。
  */
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -56,6 +57,8 @@ function emptyState(code, app = "dribblekeep") {
     finishedAt: null,
     playPackage: null,
     packageIndex: 0,
+    localHost: true,
+    hostOverlay: null,
     signals: {},
     lastActivity: Date.now(),
   };
@@ -174,13 +177,39 @@ export class KeepRoom {
       return;
     }
     if (msg.type === "start") {
-      this.start();
+      this.start(msg.local !== false);
       await this.persist();
       this.broadcast();
       return;
     }
     if (msg.type === "stop") {
-      await this.stop();
+      await this.stop(!!msg.finished);
+      this.broadcast();
+      return;
+    }
+    if (msg.type === "hostPush") {
+      this.data.hostOverlay = {
+        ...(this.data.hostOverlay || {}),
+        ...(msg.overlay || {}),
+      };
+      if (msg.overlay?.playPackage !== undefined) {
+        this.data.playPackage = msg.overlay.playPackage;
+      }
+      if (msg.overlay?.signals) {
+        this.data.signals = { ...msg.overlay.signals };
+        this.data.controllerSignal = msg.overlay.signals[CONTROLLER_ID] ?? null;
+      }
+      if (msg.overlay?.loneId !== undefined) this.data.loneId = msg.overlay.loneId;
+      if (msg.overlay?.frameStartedAt !== undefined) {
+        this.data.frameStartedAt = msg.overlay.frameStartedAt;
+      }
+      if (msg.overlay?.startedAt !== undefined) this.data.startedAt = msg.overlay.startedAt;
+      if (msg.overlay?.endsAt !== undefined) this.data.endsAt = msg.overlay.endsAt;
+      if (msg.overlay?.finishedAt !== undefined) {
+        this.data.finishedAt = msg.overlay.finishedAt;
+      }
+      this.data.lastActivity = Date.now();
+      await this.persist();
       this.broadcast();
       return;
     }
@@ -202,6 +231,8 @@ export class KeepRoom {
 
   async alarm() {
     await this.ready;
+    // ローカル化: 進行はコントローラ側。DO alarm では進めない。
+    if (this.data.localHost) return;
     if (!this.data.config.running || !this.data.playPackage) return;
     const nextIndex = this.data.packageIndex + 1;
     if (nextIndex >= this.data.playPackage.frames.length) {
@@ -258,7 +289,7 @@ export class KeepRoom {
     return ids;
   }
 
-  start() {
+  start(local = true) {
     const ids = this.liveIds();
     const peripherals = ids.filter((id) => id !== CONTROLLER_ID);
     if (
@@ -273,31 +304,42 @@ export class KeepRoom {
 
     const now = Date.now();
     this.data.config.running = true;
+    this.data.localHost = local !== false;
     this.data.startedAt = now;
     this.data.endsAt = now + this.data.config.durationSeconds * 1000;
     this.data.finishedAt = null;
     this.data.loneId = null;
-    this.data.playPackage = this.buildPlayPackage(ids, now, this.data.endsAt);
+    this.data.playPackage = null;
     this.data.packageIndex = 0;
-    const first = this.data.playPackage.frames[0];
-    if (!first) {
-      void this.finish();
-      return;
+    this.data.hostOverlay = null;
+    this.data.controllerSignal = null;
+    this.data.signals = {};
+    this.data.frameStartedAt = null;
+    void this.ctx.storage.deleteAlarm();
+    // パッケージはコントローラが hostPush する
+    if (!this.data.localHost) {
+      this.data.playPackage = this.buildPlayPackage(ids, now, this.data.endsAt);
+      const first = this.data.playPackage.frames[0];
+      if (!first) {
+        void this.finish();
+        return;
+      }
+      this.applyFrame(first);
+      void this.armPackage();
     }
-    this.applyFrame(first);
-    void this.armPackage();
   }
 
-  async stop() {
+  async stop(finished = false) {
     await this.ctx.storage.deleteAlarm();
     this.data.config.running = false;
     this.data.controllerSignal = null;
     this.data.loneId = null;
     this.data.signals = {};
     this.data.frameStartedAt = null;
-    this.data.finishedAt = null;
+    this.data.finishedAt = finished ? Date.now() : null;
     this.data.playPackage = null;
     this.data.packageIndex = 0;
+    this.data.hostOverlay = null;
     await this.persist();
   }
 
@@ -341,39 +383,43 @@ export class KeepRoom {
   }
 
   async finish() {
-    await this.ctx.storage.deleteAlarm();
-    this.data.config.running = false;
-    this.data.controllerSignal = null;
-    this.data.loneId = null;
-    this.data.signals = {};
-    this.data.frameStartedAt = null;
-    this.data.finishedAt = Date.now();
-    this.data.playPackage = null;
-    this.data.packageIndex = 0;
-    await this.persist();
+    await this.stop(true);
   }
 
   snapshot() {
-    const running = this.data.config.running;
-    const displays = Object.values(this.data.displays).map((d) => ({
+    const data = this.data;
+    const host = data.hostOverlay || null;
+    const running = data.config.running;
+    const signals = host?.signals
+      ? { ...data.signals, ...host.signals }
+      : data.signals;
+    const displays = Object.values(data.displays).map((d) => ({
       id: d.id,
       label: d.label,
       place: d.place,
       connected: !!d.connected,
-      signal: running ? this.data.signals[d.id] ?? null : null,
+      signal: running ? signals[d.id] ?? null : null,
     }));
     return {
-      code: this.data.code,
-      config: this.data.config,
+      code: data.code,
+      config: data.config,
       displays,
-      controllerSignal: running ? this.data.controllerSignal : null,
-      loneId: running ? this.data.loneId : null,
-      frameStartedAt: running ? this.data.frameStartedAt : null,
-      startedAt: this.data.startedAt,
-      endsAt: this.data.endsAt,
-      finishedAt: this.data.finishedAt,
-      playPackage: running ? this.data.playPackage : null,
-      serverNow: Date.now(),
+      controllerSignal: running
+        ? host?.controllerSignal !== undefined
+          ? host.controllerSignal
+          : data.controllerSignal
+        : null,
+      loneId: running ? (host?.loneId ?? data.loneId) : null,
+      frameStartedAt: running ? (host?.frameStartedAt ?? data.frameStartedAt) : null,
+      startedAt: host?.startedAt ?? data.startedAt,
+      endsAt: host?.endsAt ?? data.endsAt,
+      finishedAt: host?.finishedAt !== undefined ? host.finishedAt : data.finishedAt,
+      playPackage: running
+        ? host?.playPackage !== undefined
+          ? host.playPackage
+          : data.playPackage
+        : null,
+      serverNow: host?.hostNow ?? Date.now(),
     };
   }
 
