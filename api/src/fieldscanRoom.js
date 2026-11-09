@@ -236,6 +236,26 @@ export class FieldScanRoom {
       this.broadcast();
       return;
     }
+    if (msg.type === "signal" && msg.to && msg.from) {
+      // WebRTC シグナリングのみ中継（プレー本体は DataChannel）
+      const payload = JSON.stringify({
+        type: "signal",
+        from: msg.from,
+        to: msg.to,
+        payload: msg.payload,
+      });
+      for (const peer of this.ctx.getWebSockets()) {
+        const meta = peer.deserializeAttachment() || {};
+        if (meta.deviceId === msg.to) {
+          try {
+            peer.send(payload);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      return;
+    }
     if (msg.type === "hostPush") {
       const meta = ws.deserializeAttachment() || {};
       if (meta.role !== "controller") return;
@@ -256,6 +276,7 @@ export class FieldScanRoom {
       }
       this.data.lastActivity = Date.now();
       await this.persist();
+      // DC 未確立の参加端末向けフォールバック
       this.broadcast();
       return;
     }

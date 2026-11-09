@@ -214,6 +214,21 @@ export class DriveRoom {
       this.broadcast();
       return;
     }
+    if (msg.type === "signal" && msg.to && msg.from) {
+      const payload = JSON.stringify({
+        type: "signal",
+        from: msg.from,
+        to: msg.to,
+        payload: msg.payload,
+      });
+      for (const peer of this.ctx.getWebSockets()) {
+        const meta = peer.deserializeAttachment() || {};
+        if (meta.deviceId === msg.to) {
+          try { peer.send(payload); } catch { /* ignore */ }
+        }
+      }
+      return;
+    }
     if (msg.type === "hostPush") {
       this.data.hostOverlay = {
         ...(this.data.hostOverlay || {}),
